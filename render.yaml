@@ -3,10 +3,15 @@ services:
     name: mandate-ledger
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build:ui
+    buildCommand: npm install && npm run build:engine && npm run build:ui
     startCommand: npm run seed && npm start
     healthCheckPath: /api/health
     envVars:
+      # The ONNX runtime bundles its Linux binary; this stops its install step from also downloading GPU (CUDA) files.
+      - key: ONNXRUNTIME_NODE_INSTALL
+        value: skip
+      - key: ONNXRUNTIME_NODE_INSTALL_CUDA
+        value: skip
       - key: NODE_VERSION
         value: "24"
       - key: PAYPAL_ENV

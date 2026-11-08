@@ -124,6 +124,8 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       return sendJson(res, 200, {
         ok: true, paypal_env: cfg.paypalEnv, paypal_mode: cfg.paypalMode, agent_mode: cfg.agentMode,
         checkout_mode: cfg.checkoutMode, webhook_verify: cfg.webhookVerify, version: VERSION,
+        // Only in engine mode: whether the semantic model is loaded ('embeddings') or the keyword fallback is in use.
+        ...(s.engine ? { engine: s.engine.status() } : {}),
       });
     }
 
@@ -154,10 +156,10 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
 
     // ----- agent -----
     if (method === 'POST' && path === '/api/agent/instructions') {
-      const b = await readJson(req);
-      const text = typeof b.text === 'string' ? b.text.trim() : '';
       requireAuth(req); // the agent spends model quota and creates PayPal orders
       enforceLimit(agentLimiter, req, 'agent');
+      const b = await readJson(req);
+      const text = typeof b.text === 'string' ? b.text.trim() : '';
       if (!text) throw badRequest('text is required');
       if (text.length > 2000) throw badRequest('text must be 2000 characters or fewer');
       if (typeof b.mandate_id !== 'string' || !b.mandate_id) throw badRequest('mandate_id is required');
@@ -183,10 +185,10 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
 
     // Safety net: ask PayPal whether the buyer approved this order and, if so, capture it now (no webhook needed).
     if (method === 'POST' && (m = path.match(/^\/api\/purchases\/([\w-]+)\/reconcile$/))) {
-      const p = store.getPurchase(m[1]);
-      if (!p) throw notFound(`Purchase ${m[1]} not found`);
       requireAuth(req); // can trigger a PayPal capture of a buyer-approved order
       enforceLimit(reconcileLimiter, req, 'reconcile');
+      const p = store.getPurchase(m[1]);
+      if (!p) throw notFound(`Purchase ${m[1]} not found`);
       const r = await gate.reconcilePurchase(p);
       return sendJson(res, 200, { purchase: r.purchase, action: r.action, paypal_status: r.paypal_status ?? null });
     }

@@ -16,10 +16,12 @@
     "build:ui": "node --env-file-if-exists=.env scripts/build-ui.ts",
     "test": "node --test tests/*.test.ts",
     "test:e2e": "node --test e2e/*.test.ts",
+    "build:engine": "node --env-file-if-exists=.env scripts/prefetch-model.ts",
     "seed": "node --env-file-if-exists=.env scripts/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
+    "@huggingface/transformers": "^4.3.2",
     "ag-grid-community": "^33.3.2",
     "ag-grid-react": "^33.3.2",
     "next": "^15.5.29",

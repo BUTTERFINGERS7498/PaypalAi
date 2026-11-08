@@ -19,3 +19,6 @@ tests/results/
 tests/.npm-cache/
 .playwright-mcp/
 _tamper_check.mts
+
+# Downloaded embedding model for AGENT_MODE=engine (npm run build:engine)
+models/

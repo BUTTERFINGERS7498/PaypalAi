@@ -11,7 +11,7 @@ import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 function AskAgent() {
-  const { api, mandates, go } = useStore();
+  const { api, mandates, go, health } = useStore();
   const active = mandates.filter((m) => m.status === "active");
   const [mid, setMid] = useState("");
   const [text, setText] = useState("restock the pantry basics");
@@ -22,6 +22,11 @@ function AskAgent() {
 
   return (
     <Section id="ask-h" title="Ask the agent">
+      {health?.agent_mode === "engine" && (
+        <p className="small">
+          This agent is an <strong>on-server semantic engine</strong>, not Claude. It matches your words to catalog items by meaning using a small open-source embedding model, and it can understand a price cap such as “under $10” or an explicit “sku …”. It only proposes a choice: the mandate checker still decides what is allowed.
+        </p>
+      )}
       <form
         className="form-grid"
         onSubmit={async (e) => {

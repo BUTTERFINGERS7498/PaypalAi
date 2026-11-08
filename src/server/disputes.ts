@@ -133,7 +133,7 @@ export class DisputeService {
 
   private async narrative(d: Dispute, p: Purchase, records: EvidenceRecord[], verdict: string, summary: string): Promise<string> {
     const fallback = this.template(d, p, records, verdict, summary);
-    if (this.cfg.agentMode === 'mock') return fallback;
+    if (this.cfg.agentMode !== 'live') return fallback; // mock and engine modes use no language model
     try {
       const Anthropic = (await import('@anthropic-ai/sdk')).default as any;
       const client = new Anthropic({ apiKey: this.cfg.anthropicApiKey, ...(this.cfg.anthropicBaseUrl ? { baseURL: this.cfg.anthropicBaseUrl } : {}) });

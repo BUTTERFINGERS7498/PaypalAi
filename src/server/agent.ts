@@ -2,6 +2,7 @@
 // Tools: search_catalog, get_mandate, select_item. None touches PayPal. The mandate checker (checker.ts),
 // not the model, decides whether a selection is within the mandate, and every decision is recorded as evidence.
 import type { Config } from './config.ts';
+import type { SemanticEngine } from './engine.ts';
 import type { EvidenceLog } from './evidence.ts';
 import type { Gate, SelectionOutcome } from './gate.ts';
 import type { MandateService } from './mandates.ts';
@@ -27,13 +28,15 @@ export class ShoppingAgent {
   private gate: Gate;
   private evidence: EvidenceLog;
   private cfg: Config;
+  private engine: SemanticEngine | undefined;
 
-  constructor(store: Store, mandates: MandateService, gate: Gate, evidence: EvidenceLog, cfg: Config) {
+  constructor(store: Store, mandates: MandateService, gate: Gate, evidence: EvidenceLog, cfg: Config, engine?: SemanticEngine) {
     this.store = store;
     this.mandates = mandates;
     this.gate = gate;
     this.evidence = evidence;
     this.cfg = cfg;
+    this.engine = engine;
   }
 
   async handle(input: { mandate_id: string; text: string; demo_rogue?: boolean }): Promise<AgentResult> {
@@ -44,7 +47,9 @@ export class ShoppingAgent {
 
     const decision = this.cfg.agentMode === 'mock'
       ? this.decideMock(input.text, mandate, rogue)
-      : await this.decideLive(input.text, mandate, rogue);
+      : this.cfg.agentMode === 'engine'
+        ? await this.decideEngine(input.text, mandate, rogue)
+        : await this.decideLive(input.text, mandate, rogue);
 
     let result: AgentResult;
     if (decision.kind === 'selected') {
@@ -70,6 +75,12 @@ export class ShoppingAgent {
       purchase_id: result.purchase?.id ?? null, approval_id: result.approval?.id ?? null, evidence_record_id: result.evidence_record_id,
     });
     return result;
+  }
+
+  // ---------- engine mode: on-server semantic engine, no external AI ----------
+  private async decideEngine(text: string, mandate: Mandate, rogue: boolean): Promise<Decision> {
+    if (!this.engine) throw new Error('AGENT_MODE=engine but no engine was created');
+    return this.engine.decide({ text, items: this.store.listCatalog(), allowedCategories: mandate.limits.categories, rogue });
   }
 
   // ---------- mock mode: deterministic (contract section 7) ----------

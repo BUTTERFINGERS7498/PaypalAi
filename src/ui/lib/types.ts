@@ -169,6 +169,16 @@ export interface Health {
   checkout_mode: string;
   webhook_verify: string;
   version: string;
+  /** Present only when the server runs AGENT_MODE=engine: 'embeddings' once the model is loaded, else the keyword fallback. */
+  engine?: { state: string; backend: "embeddings" | "keyword"; model: string; load_ms: number | null; error: string | null };
+}
+
+/** A plain-language name for the server's agent, so nobody mistakes the on-server engine for Claude. */
+export function agentLabel(h: Pick<Health, "agent_mode" | "engine">): string {
+  if (h.agent_mode === "live") return "Claude agent";
+  if (h.agent_mode === "engine") return h.engine?.backend === "keyword" ? "on-server engine (keyword fallback, model loading)" : "on-server semantic engine (not an LLM)";
+  if (h.agent_mode === "mock") return "mock agent (deterministic)";
+  return `${h.agent_mode} agent`;
 }
 
 export type StreamEvent =

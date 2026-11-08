@@ -1,5 +1,6 @@
 "use client";
 import { StoreProvider, useStore } from "../lib/store";
+import { agentLabel } from "../lib/types";
 import type { TabId } from "../lib/store";
 import DisputeView from "./DisputeView";
 import EvidenceView from "./EvidenceView";
@@ -40,7 +41,7 @@ function Inner() {
           <Chip tone="info">PayPal SANDBOX · no real money</Chip>
           {api.kind === "mock" && <Chip tone="demo">MOCK DATA: no backend connected</Chip>}
           {health && api.kind === "api" && (
-            <span className="small">server: {health.paypal_mode} PayPal · {health.agent_mode} agent · checkout {health.checkout_mode}</span>
+            <span className="small">server: {health.paypal_mode} PayPal · {agentLabel(health)} · checkout {health.checkout_mode}</span>
           )}
         </div>
         <nav aria-label="Console views">
