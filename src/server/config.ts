@@ -19,6 +19,8 @@ export interface Config {
   anthropicModel: string;
   agentMode: AgentMode;
   approvalToken: string;
+  /** Seconds between reconciliation passes that capture buyer-approved orders PayPal's webhook was slow to announce. 0 = off. */
+  reconcileIntervalSeconds: number;
   mandateSigningKey: string;
   databasePath: string;
   port: number;
@@ -55,6 +57,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     anthropicModel: (env.ANTHROPIC_MODEL ?? '').trim() || 'claude-sonnet-5-5',
     agentMode: pick('AGENT_MODE', env.AGENT_MODE, ['live', 'mock'] as const, 'live'),
     approvalToken: env.APPROVAL_TOKEN ?? '',
+    // Default: 15 s against the real sandbox, off for the in-process mock (tests drive it explicitly).
+    reconcileIntervalSeconds: (() => {
+      const raw = (env.RECONCILE_INTERVAL_SECONDS ?? '').trim();
+      if (raw !== '') { const n = Number(raw); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 15; }
+      return (env.PAYPAL_MODE ?? 'sandbox').trim().toLowerCase() === 'mock' ? 0 : 15;
+    })(),
     mandateSigningKey: (env.MANDATE_SIGNING_KEY ?? '').trim(),
     databasePath: (env.DATABASE_PATH ?? '').trim() || './data/mandate.db',
     port: okPort,

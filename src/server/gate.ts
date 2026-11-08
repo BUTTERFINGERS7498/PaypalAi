@@ -44,6 +44,8 @@ export class Gate {
   private mandates: MandateService;
   private evidence: EvidenceLog;
   private cfg: Config;
+  /** Purchase ids with a capture call in flight (see capture()). */
+  private capturing = new Set<string>();
 
   constructor(store: Store, paypal: PaypalClient, mandates: MandateService, evidence: EvidenceLog, cfg: Config) {
     this.store = store;
@@ -194,7 +196,7 @@ export class Gate {
         within_mandate: updated.within_mandate, breaches: updated.breaches, demo_rogue: updated.demo_rogue,
         data: { approve_url: o.approve_url, order_status: o.status, authorised_by: authorisedBy, paypal_mode: this.paypal.mode },
       });
-      return this.cfg.checkoutMode === 'card' ? await this.capture(updated, authorisedBy) : updated;
+      return this.cfg.checkoutMode === 'card' ? await this.capture(updated, authorisedBy, 'card_checkout') : updated;
     } catch (err) {
       const failed = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'failed' }) ?? this.store.getPurchase(p.id)!;
       this.evidence.append({
@@ -209,8 +211,11 @@ export class Gate {
   }
 
   /** Captures an order the payer has approved. Idempotent: a purchase leaves awaiting_payer at most once. */
-  private async capture(p: Purchase, authorisedBy: string): Promise<Purchase> {
+  private async capture(p: Purchase, authorisedBy: string, source: string = 'direct'): Promise<Purchase> {
     if (p.status !== 'awaiting_payer' || !p.paypal_order_id) return p;
+    // The webhook, the reconciler and a manual reconcile can race for the same order: only one capture call at a time.
+    if (this.capturing.has(p.id)) return this.store.getPurchase(p.id) ?? p;
+    this.capturing.add(p.id);
     const ticket = mintTicket(p.id, authorisedBy);
     try {
       const cap = await this.paypal.captureOrder(ticket, p.paypal_order_id);
@@ -221,19 +226,24 @@ export class Gate {
         choice: { sku: done.sku, price: done.amount.value },
         budget_before: this.store.spentMoney(done.mandate_id), budget_after: this.store.spentMoney(done.mandate_id),
         within_mandate: done.within_mandate, breaches: done.breaches, demo_rogue: done.demo_rogue,
-        data: { paypal_capture_id: cap.paypal_capture_id, authorised_by: authorisedBy },
+        data: { paypal_capture_id: cap.paypal_capture_id, authorised_by: authorisedBy, source },
       });
       return done;
     } catch (err) {
-      const failed = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'failed' }) ?? this.store.getPurchase(p.id)!;
+      // Only record a failure if THIS call is the one that moved the purchase out of awaiting_payer.
+      const moved = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'failed' });
+      if (!moved) return this.store.getPurchase(p.id)!;
+      const failed = moved;
       this.evidence.append({
         decision: 'order_failed', mandate: this.snapshotFor(failed), purchase_id: failed.id, paypal_order_id: failed.paypal_order_id,
         choice: { sku: failed.sku, price: failed.amount.value },
         budget_before: this.store.spentMoney(failed.mandate_id), budget_after: this.store.spentMoney(failed.mandate_id),
         within_mandate: failed.within_mandate, breaches: failed.breaches, demo_rogue: failed.demo_rogue,
-        data: { stage: 'capture', authorised_by: authorisedBy, error: errInfo(err) },
+        data: { stage: 'capture', authorised_by: authorisedBy, source, error: errInfo(err) },
       });
       return failed;
+    } finally {
+      this.capturing.delete(p.id);
     }
   }
 
@@ -241,7 +251,49 @@ export class Gate {
   async onOrderApproved(orderId: string): Promise<Purchase | null> {
     const p = this.store.getPurchaseByOrderId(orderId);
     if (!p) return null;
-    return this.capture(p, 'payer');
+    return this.capture(p, 'payer', 'webhook');
+  }
+
+  /**
+   * Safety net for slow or lost webhooks. For one awaiting_payer purchase, ask PayPal what the order's state is:
+   *   APPROVED  -> the buyer approved it at PayPal, so capture (authorised_by 'payer', source 'reconcile')
+   *   COMPLETED -> already captured elsewhere, so just record it
+   *   anything else (CREATED, PAYER_ACTION_REQUIRED, VOIDED...) -> leave it alone
+   * The buyer's approval AT PAYPAL stays the only authorisation; this never captures an order PayPal has not approved.
+   */
+  async reconcilePurchase(p: Purchase): Promise<{ purchase: Purchase; action: 'captured' | 'completed' | 'waiting' | 'skipped' | 'error'; paypal_status?: string }> {
+    if (p.status !== 'awaiting_payer' || !p.paypal_order_id) return { purchase: p, action: 'skipped' };
+    let order;
+    try {
+      order = await this.paypal.getOrder(p.paypal_order_id);
+    } catch {
+      return { purchase: p, action: 'error' };
+    }
+    if (order.status === 'APPROVED') {
+      const done = await this.capture(p, 'payer', 'reconcile');
+      return { purchase: done, action: done.status === 'completed' ? 'captured' : 'error', paypal_status: order.status };
+    }
+    if (order.status === 'COMPLETED') {
+      const done = this.onCaptureCompleted(p.paypal_order_id, order.capture_id) ?? p;
+      return { purchase: done, action: 'completed', paypal_status: order.status };
+    }
+    return { purchase: p, action: 'waiting', paypal_status: order.status };
+  }
+
+  /** One pass over recent awaiting_payer purchases (bounded: newest 10 from the last 24 hours). */
+  async reconcileAll(): Promise<{ checked: number; captured: number; completed: number }> {
+    const cutoff = Date.now() - 24 * 3600_000;
+    const pending = this.store.listPurchases({ status: 'awaiting_payer' })
+      .filter((p) => p.paypal_order_id && Date.parse(p.created_at) > cutoff)
+      .slice(0, 10);
+    let captured = 0;
+    let completed = 0;
+    for (const p of pending) {
+      const r = await this.reconcilePurchase(p);
+      if (r.action === 'captured') captured += 1;
+      if (r.action === 'completed') completed += 1;
+    }
+    return { checked: pending.length, captured, completed };
   }
 
   /** Webhook PAYMENT.CAPTURE.COMPLETED. Fills in the capture id; completes the purchase if we have not already. */

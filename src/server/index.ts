@@ -146,6 +146,14 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       return sendJson(res, 200, { records: evidence.forPurchase(m[1]), chain_valid: evidence.verify().valid });
     }
 
+    // Safety net: ask PayPal whether the buyer approved this order and, if so, capture it now (no webhook needed).
+    if (method === 'POST' && (m = path.match(/^\/api\/purchases\/([\w-]+)\/reconcile$/))) {
+      const p = store.getPurchase(m[1]);
+      if (!p) throw notFound(`Purchase ${m[1]} not found`);
+      const r = await gate.reconcilePurchase(p);
+      return sendJson(res, 200, { purchase: r.purchase, action: r.action, paypal_status: r.paypal_status ?? null });
+    }
+
     // ----- approvals -----
     if (method === 'GET' && path === '/api/approvals') return sendJson(res, 200, { approvals: store.listApprovals(q.get('status') ?? undefined) });
     if (method === 'POST' && (m = path.match(/^\/api\/approvals\/([\w-]+)\/(approve|reject)$/))) {
@@ -227,8 +235,19 @@ function main(): void {
   }
   const services = createServices(cfg);
   createServer(buildHandler(services)).listen(cfg.port, '0.0.0.0', () => {
-    console.log(`Mandate Ledger ${VERSION} listening on :${cfg.port} (paypal=${cfg.paypalEnv}/${cfg.paypalMode}, agent=${cfg.agentMode}, checkout=${cfg.checkoutMode}, webhook_verify=${cfg.webhookVerify})`);
+    console.log(`Mandate Ledger ${VERSION} listening on :${cfg.port} (paypal=${cfg.paypalEnv}/${cfg.paypalMode}, agent=${cfg.agentMode}, checkout=${cfg.checkoutMode}, webhook_verify=${cfg.webhookVerify}, reconcile=${cfg.reconcileIntervalSeconds}s)`);
   });
+  if (cfg.reconcileIntervalSeconds > 0) {
+    let running = false; // never overlap passes
+    setInterval(() => {
+      if (running) return;
+      running = true;
+      services.gate.reconcileAll()
+        .then((r) => { if (r.captured || r.completed) console.log(`[reconcile] checked=${r.checked} captured=${r.captured} completed=${r.completed}`); })
+        .catch((err) => console.error('[reconcile] pass failed:', err instanceof Error ? err.message : err))
+        .finally(() => { running = false; });
+    }, cfg.reconcileIntervalSeconds * 1000);
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) main();

@@ -44,6 +44,8 @@ export interface PaypalClient {
   readonly mode: 'sandbox' | 'mock';
   createOrder(ticket: ApprovalTicket, purchase: Purchase): Promise<CreatedOrder>;
   captureOrder(ticket: ApprovalTicket, paypalOrderId: string): Promise<CapturedOrder>;
+  /** Read-only: the order's current state at PayPal (no ticket needed). */
+  getOrder(paypalOrderId: string): Promise<{ status: string; capture_id: string | null }>;
   listDisputes(): Promise<PaypalDispute[]>;
   provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string }): Promise<Record<string, unknown>>;
   acceptClaim(ticket: ApprovalTicket, disputeId: string, accept: { note: string }): Promise<Record<string, unknown>>;

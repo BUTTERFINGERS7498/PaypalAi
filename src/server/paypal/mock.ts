@@ -12,6 +12,7 @@ export class MockPaypalClient implements PaypalClient {
   readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim'; subject_id: string; target: string; detail?: unknown }[] = [];
   private orders = new Map<string, { status: 'CREATED' | 'COMPLETED'; purchaseId: string }>();
   private disputes: PaypalDispute[] = [];
+  private approved = new Set<string>();
   private counter = 0;
 
   async createOrder(ticket: ApprovalTicket, p: Purchase): Promise<CreatedOrder> {
@@ -32,6 +33,16 @@ export class MockPaypalClient implements PaypalClient {
     if (o) o.status = 'COMPLETED';
     this.calls.push({ op: 'capture', subject_id: ticket.subject_id, target: orderId });
     return { paypal_capture_id: `CAP-MOCK-${orderId.slice(-10)}` };
+  }
+
+  /** Test hook: pretend the buyer approved this order at PayPal (what getOrder will then report). */
+  approveOrder(orderId: string): void { this.approved.add(orderId); }
+
+  async getOrder(orderId: string): Promise<{ status: string; capture_id: string | null }> {
+    const o = this.orders.get(orderId);
+    if (!o) return { status: 'CREATED', capture_id: null }; // unknown to this in-memory fake (seeded data, restart)
+    if (o.status === 'COMPLETED') return { status: 'COMPLETED', capture_id: `CAP-MOCK-${orderId.slice(-10)}` };
+    return { status: this.approved.has(orderId) ? 'APPROVED' : 'PAYER_ACTION_REQUIRED', capture_id: null };
   }
 
   /** Test hook: pretend PayPal has this dispute. */

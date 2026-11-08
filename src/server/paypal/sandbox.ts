@@ -104,6 +104,11 @@ export class SandboxPaypalClient implements PaypalClient {
     return { paypal_capture_id: capture.id };
   }
 
+  async getOrder(paypalOrderId: string): Promise<{ status: string; capture_id: string | null }> {
+    const res = await this.call('GET', `/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}`);
+    return { status: String(res.status ?? 'UNKNOWN'), capture_id: res.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? null };
+  }
+
   async listDisputes(): Promise<PaypalDispute[]> {
     const res = await this.call('GET', '/v1/customer/disputes?page_size=50');
     const items: any[] = res.items ?? [];
