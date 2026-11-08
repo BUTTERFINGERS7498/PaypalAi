@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServices, type Services } from './app.ts';
 import { loadConfig, type Config } from './config.ts';
 import { REPO_ROOT } from './db.ts';
+import { RateLimiter } from './ratelimit.ts';
 import { badRequest, HttpError, notFound } from './util.ts';
 
 const VERSION = '0.1.0';
@@ -20,10 +21,42 @@ const MIME: Record<string, string> = {
 export function buildHandler(s: Services): (req: IncomingMessage, res: ServerResponse) => void {
   const { cfg, store, evidence, mandates, gate, agent, disputes, webhooks, bus } = s;
 
-  const sendJson = (res: ServerResponse, status: number, body: unknown) => {
+  const sendJson = (res: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string> = {}) => {
     const text = JSON.stringify(body);
-    res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(text) });
+    res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(text), ...extraHeaders });
     res.end(text);
+  };
+
+  // Rate limits for the expensive endpoints (agent: model quota + PayPal orders; reconcile: PayPal reads).
+  const agentLimiter = new RateLimiter({
+    perClientLimit: cfg.agentRateLimitPerHour, perClientWindowMs: 3600_000,
+    globalLimit: cfg.agentDailyLimit, globalWindowMs: 24 * 3600_000,
+  });
+  const reconcileLimiter = new RateLimiter({
+    perClientLimit: cfg.agentRateLimitPerHour > 0 ? 120 : 0, perClientWindowMs: 3600_000, globalLimit: 0, globalWindowMs: 0,
+  });
+
+  /**
+   * Best-effort client identity. Render sits behind Cloudflare, which sets `cf-connecting-ip` itself (a client cannot
+   * forge it); otherwise the RIGHT-most x-forwarded-for entry (appended by the nearest proxy), else the socket address.
+   * The global limit exists because any per-client identity can be rotated.
+   */
+  const clientKey = (req: IncomingMessage): string => {
+    const cf = String(req.headers['cf-connecting-ip'] ?? '').trim();
+    if (cf) return cf;
+    const xff = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (xff.length) return xff[xff.length - 1];
+    return req.socket.remoteAddress ?? 'unknown';
+  };
+
+  const enforceLimit = (limiter: RateLimiter, req: IncomingMessage, what: string) => {
+    const r = limiter.check(clientKey(req));
+    if (r.ok) return;
+    throw new HttpError(429, 'rate_limited',
+      r.scope === 'global'
+        ? `The demo's daily ${what} limit has been reached. Try again later.`
+        : `Too many ${what} requests from this client. Try again in ${r.retryAfterSeconds} seconds.`,
+      { scope: r.scope, retry_after_seconds: r.retryAfterSeconds });
   };
 
   const readJson = async (req: IncomingMessage): Promise<any> => {
@@ -123,6 +156,8 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
     if (method === 'POST' && path === '/api/agent/instructions') {
       const b = await readJson(req);
       const text = typeof b.text === 'string' ? b.text.trim() : '';
+      requireAuth(req); // the agent spends model quota and creates PayPal orders
+      enforceLimit(agentLimiter, req, 'agent');
       if (!text) throw badRequest('text is required');
       if (text.length > 2000) throw badRequest('text must be 2000 characters or fewer');
       if (typeof b.mandate_id !== 'string' || !b.mandate_id) throw badRequest('mandate_id is required');
@@ -150,6 +185,8 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
     if (method === 'POST' && (m = path.match(/^\/api\/purchases\/([\w-]+)\/reconcile$/))) {
       const p = store.getPurchase(m[1]);
       if (!p) throw notFound(`Purchase ${m[1]} not found`);
+      requireAuth(req); // can trigger a PayPal capture of a buyer-approved order
+      enforceLimit(reconcileLimiter, req, 'reconcile');
       const r = await gate.reconcilePurchase(p);
       return sendJson(res, 200, { purchase: r.purchase, action: r.action, paypal_status: r.paypal_status ?? null });
     }
@@ -220,7 +257,8 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       const e = err instanceof HttpError ? err : new HttpError(500, 'internal', 'Internal server error');
       if (!(err instanceof HttpError)) console.error('[server] unhandled error:', err instanceof Error ? err.stack : err);
       if (res.headersSent) { res.end(); return; }
-      sendJson(res, e.status, { error: { code: e.code, message: e.message, details: e.details } });
+      const extra: Record<string, string> = e.code === 'rate_limited' ? { 'retry-after': String(e.details.retry_after_seconds ?? 60) } : {};
+      sendJson(res, e.status, { error: { code: e.code, message: e.message, details: e.details } }, extra);
     });
   };
 }

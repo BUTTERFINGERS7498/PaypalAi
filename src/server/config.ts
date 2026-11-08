@@ -25,6 +25,10 @@ export interface Config {
   databasePath: string;
   port: number;
   publicBaseUrl: string;
+  /** Max agent requests per client per hour. 0 = off. Default 30 against the real sandbox, off in mock mode (tests). */
+  agentRateLimitPerHour: number;
+  /** Max agent requests across all clients per 24 hours (caps total model spend). 0 = off. Default 300, off in mock mode. */
+  agentDailyLimit: number;
 }
 
 export const PAYPAL_SANDBOX_BASE = 'https://api-m.sandbox.paypal.com';
@@ -42,6 +46,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const port = Number(env.PORT ?? 8787);
   const okPort = Number.isFinite(port) && port > 0 ? port : 8787;
+/** A non-negative integer from env; blank or invalid falls back to `fallback`. */
+function nonNegInt(raw: string | undefined, fallback: number): number {
+  const s = (raw ?? '').trim();
+  if (s === '') return fallback;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
   const cfg: Config = {
     paypalEnv: 'sandbox',
     paypalMode: pick('PAYPAL_MODE', env.PAYPAL_MODE, ['sandbox', 'mock'] as const, 'sandbox'),
@@ -66,6 +78,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mandateSigningKey: (env.MANDATE_SIGNING_KEY ?? '').trim(),
     databasePath: (env.DATABASE_PATH ?? '').trim() || './data/mandate.db',
     port: okPort,
+    agentRateLimitPerHour: nonNegInt(env.AGENT_RATE_LIMIT_PER_HOUR, (env.PAYPAL_MODE ?? 'sandbox').trim().toLowerCase() === 'mock' ? 0 : 30),
+    agentDailyLimit: nonNegInt(env.AGENT_DAILY_LIMIT, (env.PAYPAL_MODE ?? 'sandbox').trim().toLowerCase() === 'mock' ? 0 : 300),
     publicBaseUrl: (env.PUBLIC_BASE_URL ?? '').trim() || `http://localhost:${okPort}`,
   };
   const missing: string[] = [];
