@@ -28,7 +28,8 @@ export interface Config {
 export const PAYPAL_SANDBOX_BASE = 'https://api-m.sandbox.paypal.com';
 
 function pick<T extends string>(name: string, value: string | undefined, allowed: readonly T[], fallback: T): T {
-  const v = (value ?? '').trim() || fallback;
+  // Case-insensitive: dashboards and .env files get typed by hand ("Off", "SANDBOX"), and enum values are lowercase.
+  const v = (value ?? '').trim().toLowerCase() || fallback;
   if (!(allowed as readonly string[]).includes(v)) throw new Error(`${name} must be one of ${allowed.join(', ')} (got "${v}")`);
   return v as T;
 }
