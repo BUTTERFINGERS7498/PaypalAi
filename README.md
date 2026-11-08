@@ -17,9 +17,14 @@
 <br />
 
 <p align="center">
-  <img src="docs/media/console-ledger.jpg" alt="The purchase ledger in the Sentry console: five completed purchases, each with a 'Within mandate' check, and one labelled 'Demo: agent overrides its mandate'." width="100%" />
+  <img src="docs/media/landing.jpg" alt="The Sentry landing page: the headline 'When an AI agent spends your money, keep the receipt that proves why' beside a four-step example from signed mandate to dispute verdict." width="100%" />
 </p>
-<p align="center"><sub>The purchase ledger. Every row shows the mandate check beside the payment status. The purple row was made in the clearly labelled demo mode.</sub></p>
+<p align="center"><sub>The landing page. It tells the story in three scenes, then lets you step through one purchase and open the console.</sub></p>
+
+<p align="center">
+  <img src="docs/media/console-ledger.jpg" alt="The purchase ledger in the Sentry console: three completed purchases and a pantry order within the mandate, plus a games console marked 'Outside mandate' and 'Demo: agent overrides its mandate'." width="100%" />
+</p>
+<p align="center"><sub>The purchase ledger. Every row shows the mandate check beside the payment status. The red and purple row was made in the clearly labelled demo mode.</sub></p>
 
 ---
 
@@ -373,19 +378,19 @@ Create a mandate, edit its limits (each edit saves a new signed version), revoke
 
 Ask the agent in plain English, pick the mandate, and optionally tick the clearly labelled demo switch. Purchases above the approval threshold wait in the **Approval queue**, and the ledger below updates live over server-sent events.
 
-<p align="center"><img src="docs/media/console-ask-agent.jpg" alt="The Ask the agent form with a mandate picker, an instruction field, the purple demo checkbox that lets the agent break its mandate, and the approval queue." width="90%" /></p>
+<p align="center"><img src="docs/media/console-ask-agent.jpg" alt="The Ask the agent form with the on-server engine note, a mandate picker, an instruction field, the purple demo checkbox, and the result 'Order created for Pantry basics bundle (USD 42.00)'." width="90%" /></p>
 
 ### 3. Evidence trail
 
 For one purchase: the instruction, every option the agent saw with its price, the choice, and a chain-valid badge. **Verify whole chain** checks every record.
 
-<p align="center"><img src="docs/media/console-evidence.jpg" alt="The Evidence trail view showing the agent's instruction, the options it saw with prices, and a valid-chain badge." width="90%" /></p>
+<p align="center"><img src="docs/media/console-evidence.jpg" alt="The Evidence trail for the Games console purchase: the instruction 'buy sku ELE-GAME-01', the option the agent saw, the 'Outside mandate' and demo badges, and a valid-chain badge." width="90%" /></p>
 
 ### 4. Disputes
 
 Sync disputes from the PayPal sandbox, or create a labelled simulated dispute, then assemble the evidence packet and submit it.
 
-<p align="center"><img src="docs/media/console-disputes.jpg" alt="The Dispute console with the sync button and the simulated-dispute fallback." width="90%" /></p>
+<p align="center"><img src="docs/media/console-disputes.jpg" alt="A simulated dispute on Rolled oats 1kg with the assembled response: verdict DEFENSIBLE, chain valid, action 'Provide evidence to PayPal', and a narrative citing the evidence record ids." width="90%" /></p>
 
 Accessibility basics are built in: real buttons and form labels, a tab list for navigation, and text status badges rather than colour alone.
 
