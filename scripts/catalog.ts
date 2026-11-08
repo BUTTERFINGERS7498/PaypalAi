@@ -1,0 +1,16 @@
+export const catalog = [
+  { sku: 'GRO-OAT-01', name: 'Rolled oats 1kg', category: 'groceries', value: '4.50', merchant: 'Demo Pantry' },
+  { sku: 'GRO-RICE-01', name: 'Long grain rice 2kg', category: 'groceries', value: '8.00', merchant: 'Demo Pantry' },
+  { sku: 'GRO-BEAN-01', name: 'Black beans 400g', category: 'groceries', value: '2.00', merchant: 'Demo Pantry' },
+  { sku: 'GRO-MILK-01', name: 'Oat milk 1L', category: 'groceries', value: '3.50', merchant: 'Demo Pantry' },
+  { sku: 'GRO-PASTA-01', name: 'Pasta 500g', category: 'groceries', value: '2.75', merchant: 'Demo Pantry' },
+  { sku: 'GRO-APPLE-01', name: 'Apples 1kg', category: 'groceries', value: '5.00', merchant: 'Demo Pantry' },
+  { sku: 'GRO-COFFEE-01', name: 'Coffee beans 1kg', category: 'groceries', value: '18.00', merchant: 'Demo Pantry' },
+  { sku: 'GRO-PANTRY-42', name: 'Pantry basics bundle', category: 'groceries', value: '42.00', merchant: 'Demo Pantry' },
+  { sku: 'GRO-PANTRY-51', name: 'Pantry basics premium bundle', category: 'groceries', value: '51.00', merchant: 'Demo Pantry' },
+  { sku: 'GRO-OIL-01', name: 'Olive oil gift set', category: 'groceries', value: '60.00', merchant: 'Demo Pantry' },
+  { sku: 'ELE-ESP-01', name: 'Espresso machine', category: 'electronics', value: '129.00', merchant: 'Demo Electronics' },
+  { sku: 'ELE-GAME-01', name: 'Games console', category: 'electronics', value: '299.00', merchant: 'Demo Electronics' },
+  { sku: 'ELE-HEAD-01', name: 'Wireless headphones', category: 'electronics', value: '39.00', merchant: 'Demo Electronics' },
+  { sku: 'HOU-CLEAN-01', name: 'Household cleaning kit', category: 'household', value: '18.50', merchant: 'Demo Home' },
+] as const;
