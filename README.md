@@ -107,6 +107,7 @@ We want you to know exactly what has been run against PayPal.
 | PayPal Disputes API: **list** | ✅ Works with the sandbox app (returned no disputes) |
 | PayPal Disputes API: **create / provide-evidence / accept-claim** | ❌ **Not exercised.** PayPal answered `TRANSACTION_NOT_ELIGIBLE` when we tried to open a dispute on our sandbox payments, and the buyer could not open one in the sandbox UI either |
 | Mock mode (`PAYPAL_MODE=mock`, `AGENT_MODE=mock`) | 🧪 In-process fakes, no network. Used by the automated tests and the no-credentials path |
+| On-server semantic engine (`AGENT_MODE=engine`), the no-key agent | ✅ **Run locally**: its 14 tests pass, the real server ran it over HTTP against mock PayPal, and the whole server process used about 150 MB. ⏳ **Not yet run on the hosted Render instance** |
 
 Simulated disputes are labelled `SIMULATED` in the API and the console and are never presented as cases received from PayPal.
 
@@ -214,7 +215,8 @@ Within-mandate purchases at or under the approval threshold skip `pending_approv
 - **Webhooks are verified.** With `WEBHOOK_VERIFY=paypal`, signatures are checked with PayPal; an unverified event is rejected with `400` and not recorded. Events are idempotent on their ID.
 - **The reconciler only captures what PayPal approved.** It reads the order's state from PayPal and captures only if the buyer already approved it there.
 - **Secrets stay out of the browser.** The approval token is typed into an in-memory field and sent as a bearer header; nothing secret is read from a `NEXT_PUBLIC_*` variable.
-- **Some mutating endpoints can be protected.** With `APPROVAL_TOKEN` set, creating, changing and revoking mandates, approving or rejecting purchases, and simulating or submitting disputes require `Authorization: Bearer <token>`. The agent endpoint is not protected (see [limitations](#limitations)).
+- **Endpoints that spend or change things can be locked.** With `APPROVAL_TOKEN` set, creating, changing and revoking mandates, approving or rejecting purchases, simulating or submitting disputes, **asking the agent** (which spends model quota and creates PayPal orders) and reconciling a purchase all require `Authorization: Bearer <token>`. A wrong or missing token is rejected before it counts against any limit.
+- **The agent is rate limited.** Against the real sandbox, each client gets 30 agent requests per hour and all clients together get 300 per day (`AGENT_RATE_LIMIT_PER_HOUR`, `AGENT_DAILY_LIMIT`), answered with `429` and a `Retry-After` header. The daily cap bounds total model spend even if someone rotates identities. See [limitations](#limitations) for what this does not cover.
 
 ---
 
@@ -232,7 +234,7 @@ npm run build:ui              # exports the console to dist/ui
 npm start                     # http://localhost:8787
 ```
 
-Open **http://localhost:8787** for the console and **http://localhost:8787/api/health** for status. The default `.env.example` selects the no-credentials path (`PAYPAL_MODE=mock`, `AGENT_MODE=mock`, `WEBHOOK_VERIFY=off`). Run `npm run seed` before the first start; running it again keeps existing rows, keys and evidence.
+Open **http://localhost:8787** for the console and **http://localhost:8787/api/health** for status. The default `.env.example` selects the no-credentials path (`PAYPAL_MODE=mock`, `AGENT_MODE=mock`, `WEBHOOK_VERIFY=off`). Run `npm run seed` before the first start; running it again keeps existing rows, keys and evidence. `APPROVAL_TOKEN` is blank in the example, so locally everything is open; set it (and type it into the console's approval password field) to try the protected mode.
 
 The seed creates a mandate named **Groceries, $200/month** (groceries only, approval above $75) and a catalog of 14 fictional items: 10 groceries, 3 electronics and 1 household, for example `GRO-PANTRY-42` ($42), `ELE-ESP-01` espresso machine ($129) and `ELE-GAME-01` games console ($299). The seeded purchases are **synthetic** examples, never real PayPal transactions.
 
@@ -252,6 +254,20 @@ The seed creates a mandate named **Groceries, $200/month** (groceries only, appr
 6. In **4. Disputes**, create a *simulated* dispute for each purchase and assemble it. The in-mandate one resolves to `DEFENSIBLE`, the rogue one to `MANDATE_BREACH`.
 
 To see the human approval queue, create a second mandate with categories `electronics`, a $500 cap and a $75 threshold, then ask `buy sku ELE-ESP-01`: $129 is above the threshold, so it waits for you. (An electronics request under the groceries mandate is a category breach and is blocked, not queued.)
+
+### Try the no-key agent: the on-server semantic engine
+
+If you have no Claude key, the app can still run a real model on your own machine. `AGENT_MODE=engine` matches your words to catalog items **by meaning**, with a small open-source sentence-embedding model (`all-MiniLM-L6-v2`, about 23 MB, run locally through ONNX). Nothing is sent to any AI service. It is **not a language model**: it picks an item and explains the match with a template.
+
+```bash
+npm run build:engine                 # one-time: downloads the model into ./models (about 23 MB)
+# in .env:  AGENT_MODE=engine
+npm run seed && npm start
+```
+
+Then try instructions such as `restock the pantry basics`, `breakfast stuff`, `I need to clean the house`, `coffee beans under $25` or `buy sku GRO-OAT-01`. A price cap like "under $10" is understood. If the closest match costs more than your cap, the agent says so rather than buying something else, and a request the catalog cannot satisfy (`buy a bicycle`) is answered with "no match". The model loads in the background; until it is ready the server answers with a keyword fallback, and `GET /api/health` shows which one is active.
+
+The engine only **proposes**. The mandate checker and the gate decide exactly as with Claude, so `I need to clean the house` under a groceries-only mandate is blocked, and the evidence records the rationale, for example `Semantic match (all-MiniLM-L6-v2): "restock the pantry basics" → Pantry basics bundle (similarity 0.64)`.
 
 ### Tests and development servers
 
@@ -290,7 +306,7 @@ ANTHROPIC_MODEL=claude-sonnet-5-5
 ANTHROPIC_BASE_URL=                 # empty for api.anthropic.com
 ```
 
-For a local 9router gateway (default address `http://localhost:20128`) use its key as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL=http://localhost:20128` (a trailing `/v1` is stripped), and the gateway's own model ID, for example `ANTHROPIC_MODEL=cc/claude-sonnet-5-5`. `AGENT_MODE=mock` needs no model: it matches the catalog deterministically and writes templated narratives. PayPal and agent modes are independent.
+For a local 9router gateway (default address `http://localhost:20128`) use its key as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL=http://localhost:20128` (a trailing `/v1` is stripped), and the gateway's own model ID, for example `ANTHROPIC_MODEL=cc/claude-sonnet-5-5`. `AGENT_MODE=mock` and `AGENT_MODE=engine` need no Claude key: mock matches the catalog by keywords and engine by meaning (see above), and both write templated dispute narratives. PayPal and agent modes are independent.
 
 <details>
 <summary><b>All environment variables</b></summary>
@@ -304,11 +320,15 @@ For a local 9router gateway (default address `http://localhost:20128`) use its k
 | `PAYPAL_WEBHOOK_ID` | | Required when `WEBHOOK_VERIFY=paypal` |
 | `WEBHOOK_VERIFY` | `paypal` | `paypal` = verify signatures · `off` = accept unverified (recorded as `verified:false`) |
 | `CHECKOUT_MODE` | `payer_approval` | `payer_approval` (buyer approves at PayPal, the verified path) or `card` (capture right after creating the order; meant for mock PayPal, since the sandbox client sends no card details) |
-| `AGENT_MODE` | `live` | `live` = Claude tool-calling · `mock` = deterministic |
+| `AGENT_MODE` | `live` | `live` = Claude tool-calling (needs `ANTHROPIC_API_KEY`) · `mock` = deterministic keyword parser · `engine` = on-server semantic engine, no key and no external AI service |
+| `ENGINE_MODEL` / `ENGINE_MODEL_DIR` | `Xenova/all-MiniLM-L6-v2` / `./models` | Embedding model for `engine` mode and where it is cached (`npm run build:engine` downloads it) |
+| `ENGINE_OFFLINE` | | `1` = never download the model; it must already be in `ENGINE_MODEL_DIR` |
 | `ANTHROPIC_API_KEY` | | Required when `AGENT_MODE=live` |
 | `ANTHROPIC_BASE_URL` | | Optional gateway, for example 9router |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Model ID, as the provider or gateway names it |
-| `APPROVAL_TOKEN` | | When set, protects mutating endpoints with a bearer token |
+| `APPROVAL_TOKEN` | | When set, mutating endpoints, the agent and reconcile require `Authorization: Bearer <token>` |
+| `AGENT_RATE_LIMIT_PER_HOUR` | `30` sandbox, `0` mock | Agent requests per client per hour; `0` turns it off |
+| `AGENT_DAILY_LIMIT` | `300` sandbox, `0` mock | Agent requests across all clients per 24 hours; `0` turns it off |
 | `RECONCILE_INTERVAL_SECONDS` | `15` sandbox, `0` mock | Interval for the webhook safety net; `0` turns it off |
 | `MANDATE_SIGNING_KEY` | generated | Base64 PKCS8 ed25519 key; otherwise a demo key is generated and stored in SQLite |
 | `DATABASE_PATH` | `./data/mandate.db` | SQLite file |
@@ -328,12 +348,12 @@ Enum values are case-insensitive (`Off` and `off` both work); `PAYPAL_ENV` is de
 The repository includes [`render.yaml`](render.yaml) (Node 24, build `npm install && npm run build:ui`, start `npm run seed && npm start`, health check `/api/health`).
 
 1. Push the repository to GitHub, then in Render choose **New → Blueprint**, connect the repo and apply `render.yaml`.
-2. Enter the prompted secrets in Render's private dashboard: the sandbox app's `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`, and for `AGENT_MODE=live` an `ANTHROPIC_API_KEY`. **Leave `ANTHROPIC_BASE_URL` empty on Render**: a gateway on your own machine is not reachable from there. Set `AGENT_MODE`, `WEBHOOK_VERIFY` and `ANTHROPIC_MODEL` in the dashboard (they are `sync: false`, so Blueprint syncs do not reset them).
+2. Enter the prompted secrets in Render's private dashboard: the sandbox app's `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. **For a public demo, set `AGENT_MODE=engine`**: it needs no AI key, so none of your own credentials sit on the server, and a visitor cannot spend your model quota. The build downloads the embedding model into `./models` (`npm run build:engine`, part of `buildCommand`), and `render.yaml` sets `ONNXRUNTIME_NODE_INSTALL=skip` so the ONNX install does not also fetch GPU files. If you prefer Claude instead, set `AGENT_MODE=live` with a real `ANTHROPIC_API_KEY` and **leave `ANTHROPIC_BASE_URL` empty**: a gateway on your own machine is not reachable from Render. Set `AGENT_MODE` and `WEBHOOK_VERIFY` in the dashboard (they are `sync: false`, so Blueprint syncs do not reset them).
 3. Set `PUBLIC_BASE_URL` to the service URL, for example `https://mandate-ledger.onrender.com`.
 4. In your PayPal **sandbox** app, add a webhook at `https://<service>.onrender.com/webhooks/paypal` for `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.DENIED` and the three `CUSTOMER.DISPUTE.*` events.
 5. Save the webhook's ID as `PAYPAL_WEBHOOK_ID`, set `WEBHOOK_VERIFY=paypal`, and redeploy. Confirm `GET /api/webhooks` shows received events with `verified: true`.
 
-`APPROVAL_TOKEN` is generated by the Blueprint; keep it private and type it into the console's approval password field.
+`APPROVAL_TOKEN` is generated by the Blueprint; keep it private and type it into the console's approval password field. Because it also protects the agent, a visitor cannot ask the agent for anything without it. If you want judges or testers to use the hosted demo, give them the password in your submission's testing instructions, and remember that anyone holding it can use the demo (the rate limits still apply).
 
 > **Free plan caveats:** the instance sleeps when idle, so the first request can take about a minute, and the database resets on every fresh boot. Startup seeding restores the synthetic catalog, mandate and history, but cannot recover earlier sandbox purchases or evidence. Use persistent storage if you need the ledger to survive restarts.
 
@@ -343,16 +363,29 @@ The repository includes [`render.yaml`](render.yaml) (Node 24, build `npm instal
 
 Four views, in the order you would use them. They are served at `/` and talk to the API.
 
-<table>
-  <tr>
-    <td width="50%"><b>1. Mandates</b><br/>Create, edit limits (saves a new signed version), revoke, view version history, and verify the signature.<br/><img src="docs/media/console-mandates.jpg" alt="The Mandates view: Groceries, $200/month, with its limits, spend bar and signature note." width="100%" /></td>
-    <td width="50%"><b>3. Evidence trail</b><br/>For one purchase: the instruction, every option the agent saw with its price, the choice, and a chain-valid badge.<br/><img src="docs/media/console-evidence.jpg" alt="The Evidence trail view: the agent's instruction and the options it saw, with a valid-chain badge." width="100%" /></td>
-  </tr>
-  <tr>
-    <td valign="top"><b>2. Purchase ledger</b><br/>Ask the agent in plain English, work the approval queue, follow PayPal approval links, and watch purchases update live over server-sent events.</td>
-    <td valign="top"><b>4. Disputes</b><br/>Sync disputes from the PayPal sandbox, or create a labelled simulated one, then assemble the evidence packet and submit.<br/><img src="docs/media/console-disputes.jpg" alt="The Dispute console with the sync button and the simulated-dispute fallback." width="100%" /></td>
-  </tr>
-</table>
+### 1. Mandates
+
+Create a mandate, edit its limits (each edit saves a new signed version), revoke it, browse the version history, and verify the signature.
+
+<p align="center"><img src="docs/media/console-mandates.jpg" alt="The Mandates view showing the mandate Groceries, $200/month with its monthly cap, category, approval threshold, a spend bar and the signature note." width="90%" /></p>
+
+### 2. Purchase ledger
+
+Ask the agent in plain English, pick the mandate, and optionally tick the clearly labelled demo switch. Purchases above the approval threshold wait in the **Approval queue**, and the ledger below updates live over server-sent events.
+
+<p align="center"><img src="docs/media/console-ask-agent.jpg" alt="The Ask the agent form with a mandate picker, an instruction field, the purple demo checkbox that lets the agent break its mandate, and the approval queue." width="90%" /></p>
+
+### 3. Evidence trail
+
+For one purchase: the instruction, every option the agent saw with its price, the choice, and a chain-valid badge. **Verify whole chain** checks every record.
+
+<p align="center"><img src="docs/media/console-evidence.jpg" alt="The Evidence trail view showing the agent's instruction, the options it saw with prices, and a valid-chain badge." width="90%" /></p>
+
+### 4. Disputes
+
+Sync disputes from the PayPal sandbox, or create a labelled simulated dispute, then assemble the evidence packet and submit it.
+
+<p align="center"><img src="docs/media/console-disputes.jpg" alt="The Dispute console with the sync button and the simulated-dispute fallback." width="90%" /></p>
 
 Accessibility basics are built in: real buttons and form labels, a tab list for navigation, and text status badges rather than colour alone.
 
@@ -383,7 +416,7 @@ curl -s localhost:8787/api/purchases/<purchase_id>/evidence
 curl -s localhost:8787/api/evidence/verify
 ```
 
-Errors always have the shape `{ "error": { "code", "message", "details" } }`.
+Errors always have the shape `{ "error": { "code", "message", "details" } }`. When `APPROVAL_TOKEN` is set, send `Authorization: Bearer <token>` on the protected endpoints listed under [safety](#safety); the agent and reconcile endpoints are also rate limited and answer `429` with `Retry-After`.
 
 ---
 
@@ -397,7 +430,9 @@ src/server/
   mandates.ts     create / version / revoke / verify signed mandates
   signing.ts      ed25519 signing with the app's demo key
   checker.ts      the deterministic mandate checker
-  agent.ts        shopping agent: mock and live Claude tool-calling
+  agent.ts        shopping agent: mock, on-server engine, and live Claude tool-calling
+  engine.ts       the on-server semantic engine: intent rules, embedding match, keyword fallback
+  ratelimit.ts    in-memory rate limiter for the agent and reconcile endpoints
   gate.ts         the only place that mints PayPal tickets; approvals, capture, reconcile
   evidence.ts     append-only, hash-chained evidence log and chain verification
   disputes.ts     dispute assembly, computed verdict, narrative with guards
@@ -407,7 +442,8 @@ src/server/
   paypal/         sandbox client, in-process mock, approval tickets
 src/ui/           Next.js console (AG Grid ledger), exported statically to dist/ui
 db/schema.sql     SQLite schema, including the append-only triggers
-scripts/          seed, UI build and dev helpers, the demo catalog
+scripts/          seed, UI build and dev helpers, the demo catalog, prefetch-model.ts (engine model download)
+models/           the downloaded embedding model (git-ignored; created by npm run build:engine)
 tests/  e2e/      Node's built-in test runner, no extra test packages
 infra/            platform verification scripts
 docs/             api-contract.md, media/
@@ -426,8 +462,9 @@ render.yaml       Render Blueprint
 - **Our own signing key.** Mandates are signed with a demo ed25519 key labelled "Mandate Ledger demo key". We make **no** claim of AP2 or FIDO conformance, real liability shifting, card-network integration, regulatory approval or production readiness.
 - **Disputes are simulated.** See the [table above](#-what-is-real-and-what-is-simulated).
 - **Demo mode is not an authorization mechanism.** `demo_rogue` exists only to show an honest breach record in the sandbox.
-- **Open agent endpoint by default.** `POST /api/agent/instructions` and `POST /api/purchases/:id/reconcile` do not require the bearer token. On a public deployment anyone who can reach it can ask the agent to create sandbox orders, which also uses your model quota. Put the instance behind your own access control if that matters.
-- **Free-tier hosting.** The hosted demo sleeps when idle and resets its database on each boot. Its live agent works only while its model credentials and gateway are available.
+- **Protection depends on configuration.** The agent endpoint needs the bearer token only when `APPROVAL_TOKEN` is set, so a deployment without it (including the default local setup) is open. Rate limits are in memory, per process and per instance: they reset when the server restarts, and the client identity is best-effort. The daily cap is the backstop, and it also means a determined caller can use up the day's allowance for everyone. Anyone you give the approval password to has full use of the demo.
+- **The engine is not an LLM.** `AGENT_MODE=engine` ranks catalog items with a small embedding model and a few rules. It cannot hold a conversation, write free text or reason about abstract requests: "something warm to drink in the morning" is a known miss. On our 18 hand-written requests it chose an acceptable item 16 times (the keyword baseline managed 12), and its "no match" threshold was tuned on a 14-item catalog and a small test set, so expect misses on other catalogs. When in doubt it proposes, and the checker decides.
+- **Free-tier hosting.** The hosted demo sleeps when idle and resets its database on each boot. In `live` mode its agent works only while its model credentials and gateway are available; `engine` mode has no such dependency.
 - **Fictional data.** The catalog and the seeded history are invented. Mock PayPal makes no network payments, and mock agent output involves no model.
 
 ---
@@ -440,7 +477,11 @@ render.yaml       Render Blueprint
 | `Missing required env: … See .env.example` | Credentials are absent for a live mode. Use `PAYPAL_MODE=mock AGENT_MODE=mock WEBHOOK_VERIFY=off`, or fill in the credentials |
 | PayPal checkout page: *"This seller doesn't accept payments in your currency"* | The sandbox seller and buyer accounts could not trade in USD together. Create the business and personal accounts in the United States and use a new REST app under the business account |
 | Agent returns `upstream_error … No active credentials for provider: anthropic` | The model ID does not match what your gateway serves. With 9router use the prefixed ID, for example `cc/claude-sonnet-5-5` |
+| Console says *"on-server engine (keyword fallback, model loading)"* | The embedding model is still loading, or could not load. Check `GET /api/health`: `engine.state` and `engine.error`. Run `npm run build:engine` so the model is on disk; keyword matching keeps working meanwhile |
+| Engine mode picks an odd item, or says *"couldn't find anything"* | It matches by meaning with a small model, so abstract requests can miss. Be concrete (`oat milk`, `cleaning kit`), name a `sku`, or use a price cap like `under $10` |
 | Agent works locally but fails on Render | `ANTHROPIC_BASE_URL` points at a gateway Render cannot reach. Use a real Anthropic key and leave the base URL empty, or expose the gateway deliberately |
+| Asking the agent returns `401 unauthorized` | The server has `APPROVAL_TOKEN` set. Type the token into the console's **Approval password** field, or send `Authorization: Bearer <token>` |
+| Asking the agent returns `429 rate_limited` | You hit the per-client hourly limit or the daily cap. Wait for the number of seconds in the `Retry-After` header, or raise `AGENT_RATE_LIMIT_PER_HOUR` / `AGENT_DAILY_LIMIT` on your own deployment |
 | Purchase stays `awaiting_payer` after the buyer approved | The webhook can lag by a minute or more. The reconciler captures it within about 15 seconds; or call `POST /api/purchases/:id/reconcile` |
 | Real webhooks never arrive locally | PayPal cannot reach `localhost`. Deploy to a public URL, or simulate the event as in the demo steps |
 | Opening a dispute fails with `TRANSACTION_NOT_ELIGIBLE` | PayPal did not allow a dispute on those fresh sandbox payments. Use the labelled simulated dispute |
@@ -457,6 +498,7 @@ render.yaml       Render Blueprint
 - [x] Real sandbox orders, buyer approval and capture; signed webhooks; webhook safety net
 - [x] Computed dispute verdicts with a guarded model narrative (on simulated disputes)
 - [x] Console with mandate, ledger, evidence and dispute views; deployed on Render
+- [x] A no-key, on-server semantic engine for the agent (verified locally; not yet deployed)
 - [ ] A real PayPal dispute round trip (create, provide evidence, accept claim)
 - [ ] Persistent storage for a stable hosted ledger and signing key
 - [ ] Access control on the agent endpoint for public deployments
@@ -466,7 +508,7 @@ render.yaml       Render Blueprint
 
 ## 🤖 AI tools
 
-- **In the product:** Claude (`claude-sonnet-5-5`, through the Anthropic API or a compatible gateway) runs the shopping agent's tool calls and drafts dispute narratives. `AGENT_MODE=mock` replaces it with deterministic code.
+- **In the product:** three agent modes. `AGENT_MODE=live` uses Claude (`claude-sonnet-5-5`, through the Anthropic API or a compatible gateway) for the shopping agent's tool calls and for dispute narratives. `AGENT_MODE=engine` uses an open-source sentence-embedding model, [`Xenova/all-MiniLM-L6-v2`](https://huggingface.co/Xenova/all-MiniLM-L6-v2), run locally through [Transformers.js](https://huggingface.co/docs/transformers.js) and ONNX, with no external AI service. `AGENT_MODE=mock` is deterministic code used by the tests.
 - **While building:** AI coding assistants (Claude Code and Codex) were used as development tools. They are separate from the product's AI above.
 
 ## 🤝 Contributing

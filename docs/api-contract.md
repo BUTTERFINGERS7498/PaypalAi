@@ -8,6 +8,7 @@ _Newest first. Every breaking change gets a dated line here._
 
 - 2026-11-08 — v0.1 initial contract. Nothing to migrate.
 - 2026-11-08 (additive, not breaking) — evidence `decision` gains `order_failed`.
+- 2026-11-08 (**breaking for clients of a deployment that sets `APPROVAL_TOKEN`**) — `POST /api/agent/instructions` and `POST /api/purchases/:id/reconcile` now require the bearer token, and both are rate limited (new error `rate_limited` 429, new env `AGENT_RATE_LIMIT_PER_HOUR`, `AGENT_DAILY_LIMIT`). Deployments without `APPROVAL_TOKEN` (local dev) still accept them unauthenticated. The console already sends the approval password on every request.
 - 2026-11-08 (additive, not breaking) — `POST /api/purchases/:id/reconcile`, env `RECONCILE_INTERVAL_SECONDS`, and `data.source` on `captured` records (webhook safety net).
 
 ---
@@ -49,12 +50,28 @@ _Newest first. Every breaking change gets a dated line here._
 { "error": { "code": "not_found", "message": "Mandate m_… not found", "details": {} } }
 ```
 Codes: `bad_request` 400, `unauthorized` 401, `not_found` 404, `invalid_state` 409,
-`mandate_inactive` 409 (revoked mandate), `upstream_error` 502 (PayPal/Anthropic), `internal` 500.
+`mandate_inactive` 409 (revoked mandate), `rate_limited` 429 (`details: { scope: "client"|"global", retry_after_seconds }`,
+plus a `Retry-After` header), `upstream_error` 502 (PayPal/Anthropic), `internal` 500.
 
 ### Auth
 If `APPROVAL_TOKEN` is set, these require `Authorization: Bearer <APPROVAL_TOKEN>`:
 `POST /api/mandates*`, `POST /api/approvals/:id/approve|reject`, `POST /api/disputes/:id/submit`,
-`POST /api/disputes/simulate`. Everything else is open. Unset = open (local dev).
+`POST /api/disputes/simulate`, **`POST /api/agent/instructions`** and **`POST /api/purchases/:id/reconcile`**
+(the agent spends model quota and creates PayPal orders; reconcile can trigger a capture).
+A missing or wrong token is rejected with `401` **before** it counts against any rate limit.
+Everything else is open. Unset = open (local dev).
+
+### Rate limits (agent and reconcile)
+Always applied against the real sandbox (`PAYPAL_MODE=sandbox`), off by default in `mock` mode so tests stay
+deterministic. In-memory and per process (they reset on restart).
+- `POST /api/agent/instructions`: at most `AGENT_RATE_LIMIT_PER_HOUR` (default 30) per client per hour **and**
+  `AGENT_DAILY_LIMIT` (default 300) across all clients per 24 h. Over the limit: `429 rate_limited`; a blocked
+  request is not counted, so waiting out the window always works.
+- `POST /api/purchases/:id/reconcile`: 120 per client per hour (only when the agent limit is enabled).
+- Client identity: `cf-connecting-ip` (set by Cloudflare, which fronts Render), else the right-most
+  `x-forwarded-for` entry, else the socket address. Identities can be rotated, which is why the global daily
+  cap exists: it bounds total spend regardless of who calls.
+- Reads, `GET /api/health`, webhooks, mandate verification and dispute assembly are not limited.
 
 ## 2. Environment variables (platform writes `.env.example`)
 
@@ -70,8 +87,13 @@ If `APPROVAL_TOKEN` is set, these require `Authorization: Bearer <APPROVAL_TOKEN
 | `ANTHROPIC_API_KEY` | if `AGENT_MODE=live` | — | |
 | `ANTHROPIC_BASE_URL` | no | — | gateway such as 9router `http://localhost:20128` (a trailing `/v1` is stripped); then the key is the gateway's |
 | `ANTHROPIC_MODEL` | no | `claude-sonnet-5-5` | behind a gateway use its id (9router: `cc/claude-sonnet-5-5`) |
-| `AGENT_MODE` | no | `live` | `live` Claude tool-calling; `mock` deterministic parser (tests) |
+| `AGENT_MODE` | no | `live` | `live` Claude tool-calling (needs `ANTHROPIC_API_KEY`) · `mock` deterministic keyword parser (tests) · `engine` on-server semantic engine, **no external AI service and no key** (§7). Case-insensitive. |
+| `ENGINE_MODEL` | no | `Xenova/all-MiniLM-L6-v2` | embedding model for `AGENT_MODE=engine` (a Hugging Face model id; ~23 MB quantized) |
+| `ENGINE_MODEL_DIR` | no | `./models` | where the model is cached. `npm run build:engine` downloads it there at build time |
+| `ENGINE_OFFLINE` | no | — | `1` = never download: the model must already be in `ENGINE_MODEL_DIR` (used by the tests) |
 | `APPROVAL_TOKEN` | no | — | see Auth |
+| `AGENT_RATE_LIMIT_PER_HOUR` | no | `30` (`PAYPAL_MODE=sandbox`), `0` (`mock`) | max agent requests per client per hour; `0` disables |
+| `AGENT_DAILY_LIMIT` | no | `300` (`PAYPAL_MODE=sandbox`), `0` (`mock`) | max agent requests across all clients per 24 h (caps total model spend); `0` disables |
 | `RECONCILE_INTERVAL_SECONDS` | no | `15` (`PAYPAL_MODE=sandbox`), `0` (`mock`) | seconds between automatic reconciliation passes (webhook safety net, see `POST /api/purchases/:id/reconcile`). `0` turns the poller off. On Render's free plan it only runs while the instance is awake. |
 | `MANDATE_SIGNING_KEY` | no | generated | base64 ed25519 private key (PKCS8 DER). If unset, generated on first boot and persisted in the DB table `signing_keys` |
 | `DATABASE_PATH` | no | `./data/mandate.db` | |
@@ -249,6 +271,8 @@ the UI and README and is never described as coming from PayPal.
 
 ### Health
 `GET /api/health` → `{ "ok": true, "paypal_env": "sandbox", "paypal_mode": "sandbox", "agent_mode": "live", "checkout_mode": "payer_approval", "webhook_verify": "paypal", "version": "0.1.0" }`
+With `AGENT_MODE=engine` it also carries `"engine": { "state": "ready", "backend": "embeddings", "model": "Xenova/all-MiniLM-L6-v2", "load_ms": 282, "error": null }`.
+`state` is `loading` | `ready` | `failed`; `backend` is `embeddings` once the model is loaded and `keyword` while it loads or if it failed.
 
 ### Mandates
 - `GET /api/mandates` → `{ "mandates": [Mandate] }` (current version of each; newest first)
@@ -382,7 +406,30 @@ with `within_mandate: false`. The UI must label it clearly ("demo: agent overrid
 The later dispute then yields `MANDATE_BREACH` / `accept_claim`. The flag is only honoured when
 `PAYPAL_ENV=sandbox` (always true here) and is recorded in every affected record.
 
-## 7. Agent behaviour (mock mode, for tests)
+## 7. Agent behaviour
+
+### 7a. `AGENT_MODE=engine` (the on-server semantic engine; the intended default for a public demo)
+No external AI service, no API key, no outbound call at inference time. It is **not a language model** and
+generates no free text: rationales are templated from the match. Implemented in `src/server/engine.ts`.
+1. **Intent (rules):** an explicit `sku <SKU>` wins outright (unknown sku → `no_match`). A price cap is read from
+   `under|below|less than|no more than|up to|at most|max|within [$]N`, `for $N` or `$N or less`; a bare "for 2
+   people" or "5kg" is not a price. The cap phrase and sku are removed before matching.
+2. **Semantic ranking:** the remaining text and each catalog item (`"<name>. <category>."`) are embedded with a small
+   open-source sentence-embedding model (`ENGINE_MODEL`, run locally through ONNX) and ranked by cosine similarity.
+   The model loads in the background; until it is ready, or if it fails, a keyword-overlap ranking on the same 0..1
+   scale is used and the rationale says "Keyword match".
+3. **Policy:** below similarity `0.42` there is no credible match → `no_match`. If a price cap removes the real match
+   and what remains scores more than `0.10` lower, the reply says the closest match is above the cap instead of buying
+   a different product. Among matches within `0.03` of the best the **cheapest** is chosen, preferring items in an
+   allowed category unless `demo_rogue` is on. Text with nothing to match on (empty or only filler) → `needs_info`.
+4. **The engine only proposes.** The pick goes to the same checker and gate as every other mode, so an out-of-mandate
+   pick is still `blocked` (or, with `demo_rogue`, recorded as a breach). The evidence `rationale` reads like
+   `Semantic match (all-MiniLM-L6-v2): "restock the pantry basics" → Pantry basics bundle (similarity 0.64); best
+   match; in an allowed category.` and `options_seen` lists the top candidates.
+5. Dispute narratives in this mode use the deterministic template (no language model).
+Calibration (similarity threshold, tie width) comes from the 14-item demo catalog and a small hand-written test set.
+
+### 7b. `AGENT_MODE=mock` (deterministic, for tests)
 
 `AGENT_MODE=mock` parses: `buy <anything|item words> [for $<max>]`, `restock <words>`; it picks the
 cheapest catalog match by case-insensitive word overlap with name/category, preferring items in an

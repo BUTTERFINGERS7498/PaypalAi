@@ -42,6 +42,10 @@ Terminals die when finished or killed; restart with `hc run --bg --name <n> --cw
   `CHECKOUT.ORDER.APPROVED` (verified=true) -> server captured (authorised_by=payer) -> `PAYMENT.CAPTURE.COMPLETED`
   (verified=true) -> purchase `completed`; PayPal shows capture COMPLETED USD 42.00; evidence chain valid. Delivery lagged
   ~40s+ after PayPal created the event. An unsigned fake webhook is rejected with 400.
+- **Webhook safety net proven live (2026-11-08, commit ac826d7):** order 6YL255807R517931L: the reconciler
+  (poll every 15 s, asks PayPal for order state) captured it at 13:29:06 (`captured` evidence `source=reconcile`,
+  `authorised_by=payer`); the real signed `CHECKOUT.ORDER.APPROVED` webhook arrived 7 s later and was harmless (one
+  capture at PayPal, zero `order_failed` records); `PAYMENT.CAPTURE.COMPLETED` verified+processed; chain valid.
 - Render env gotchas hit: WEBHOOK_VERIFY typed "Off" (fixed + config now case-insensitive); ANTHROPIC_MODEL needed the
   `cc/` prefix for 9router. The Cloudflare tunnel to the laptop is fragile for judging (Dec 1-15): prefer a real
   Anthropic key (ANTHROPIC_BASE_URL empty, model claude-sonnet-5-5) before submitting.
