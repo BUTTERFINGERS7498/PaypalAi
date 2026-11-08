@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#console",
+  "style": { "background": "glacier", "frame": "browser", "captions": true },
+  "output": { "width": 1280, "height": 720, "fps": 24, "gif": true },
+  "steps": [
+    { "click": "role=tab[name='3. Evidence trail']", "say": "Step three: the notebook. Every decision writes one record, oldest first." },
+    { "pause": 2 },
+    { "highlight": "text=Options the agent saw", "text": "What the agent saw, when it chose", "say": "It keeps the instruction, every option the agent saw with its price, and the choice it made." },
+    { "scroll": "text=Chain valid for this trail", "say": "Each record carries the fingerprint of the one before it, so editing history breaks the chain." },
+    { "click": "role=button[name='Verify whole chain']", "say": "One click re-computes every fingerprint across the whole ledger." },
+    { "pause": 3 }
+  ]
+}

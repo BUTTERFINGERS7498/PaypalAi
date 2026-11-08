@@ -64,7 +64,7 @@ To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `h
 1. Human: in Render, **delete `APPROVAL_TOKEN`** (decision: demo stays open, no password) and redeploy; then try the engine in the
    console (`breakfast stuff`, `coffee beans under $10`) and tell the orchestrator the result. Rate limits still apply.
 2. Make the repo **public** (GitHub Settings -> Danger Zone) and confirm MIT shows in the About panel.
-3. Record the demo video (< 3 min, YouTube public; script in plan section 8.1) and put its link at the top of `README.md`
+3. Demo video: 7 captioned pieces + a full 4m21s cut are in `demo/` (README has a section; recorded on local mock PayPal + engine via `agent-screenplay`, scenarios `demo/0N-*.json`, `demo/approve-orders.mjs` stands in for buyer approval). **Still to do:** a <3 min cut for YouTube/Devpost (trim chapters 2/5/7), optional voice-over (needs a Cartesia/ElevenLabs key), and put its link at the top of `README.md`
    (an HTML `TODO` comment marks the spot). Write the Devpost text + AI-tools disclosure (README has an "AI tools" section).
 4. Optional: retry the real dispute (`POST /v1/customer/disputes`) once more later; run engine + real PayPal sandbox once.
 5. Optional: qa follow-ups (`handoffs/backend-reconcile.md`), `.env.example` `RECONCILE_INTERVAL_SECONDS`, BYOK adapter.

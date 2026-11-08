@@ -28,6 +28,65 @@
 
 ---
 
+## 🎬 Demo video, in seven short pieces
+
+Watch the whole thing in one go, or jump to the piece you care about. Click a picture to play it (GitHub opens the video in its own player). They use captions instead of a voice-over, so they work on mute.
+
+**▶ [Watch the full walkthrough (4 min 21 s)](demo/sentry-demo-full.mp4)**
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="demo/01-the-idea.mp4"><img src="demo/posters/01-the-idea.jpg" alt="Chapter 1: the idea, shown on the landing page" width="100%" /></a><br />
+      <b>1. The idea</b> · 49 s<br />
+      <sub>The helper-robot story, then one purchase followed step by step.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="demo/02-sign-a-mandate.mp4"><img src="demo/posters/02-sign-a-mandate.jpg" alt="Chapter 2: signing a mandate" width="100%" /></a><br />
+      <b>2. Sign a mandate</b> · 34 s<br />
+      <sub>Limits, the approval line, the signature check and version history.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="demo/03-the-agent-shops.mp4"><img src="demo/posters/03-the-agent-shops.jpg" alt="Chapter 3: the agent shops" width="100%" /></a><br />
+      <b>3. The agent shops</b> · 35 s<br />
+      <sub>Plain-English instruction, an order created, and the ledger row with its mandate check.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="demo/04-breaking-the-rules.mp4"><img src="demo/posters/04-breaking-the-rules.jpg" alt="Chapter 4: the agent breaks its mandate" width="100%" /></a><br />
+      <b>4. Breaking the rules</b> · 32 s<br />
+      <sub>The labelled demo switch lets a bad choice through, and the record says so.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="demo/05-the-evidence-trail.mp4"><img src="demo/posters/05-the-evidence-trail.jpg" alt="Chapter 5: the evidence trail" width="100%" /></a><br />
+      <b>5. The evidence trail</b> · 27 s<br />
+      <sub>What the agent saw and chose, and the one-click chain check.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="demo/06-the-dispute.mp4"><img src="demo/posters/06-the-dispute.jpg" alt="Chapter 6: a dispute that is defensible" width="100%" /></a><br />
+      <b>6. The dispute</b> · 41 s<br />
+      <sub>A simulated dispute on an in-mandate purchase: verdict DEFENSIBLE, provide the evidence.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="demo/07-when-the-agent-is-wrong.mp4"><img src="demo/posters/07-when-the-agent-is-wrong.jpg" alt="Chapter 7: a dispute that is a mandate breach" width="100%" /></a><br />
+      <b>7. When the agent is wrong</b> · 43 s<br />
+      <sub>The same process on the rogue purchase: verdict MANDATE BREACH, accept the claim.</sub>
+    </td>
+    <td width="50%" valign="top"> </td>
+  </tr>
+</table>
+
+> **How these were recorded, honestly.** They were filmed on a local run with the **mock PayPal client** and the on-server semantic engine, so nothing in them touches PayPal. The step where the buyer approves at PayPal is stood in for by posting the same `CHECKOUT.ORDER.APPROVED` webhook PayPal would send (`demo/approve-orders.mjs`). Disputes are the labelled **simulated** ones. The real PayPal sandbox path is described in [Run it against the real PayPal sandbox](#-run-it-against-the-real-paypal-sandbox).
+>
+> **Re-make them:** each piece is a scenario file in [`demo/`](demo) (`01-…json` to `07-…json`), rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) (`npx agent-screenplay record demo/01-the-idea.json`).
+
+---
+
 ## 💡 Why Sentry?
 
 AI agents can now spend money. When one of those purchases goes wrong, nobody can easily show **what the agent was allowed to do, what it actually saw, and whether it obeyed**. Signed-mandate protocols can prove what was *authorised*. They do not prove that the agent read a correct price, that budget remained, or that the mandate was still active at the moment of purchase. That evidence has to be captured by whoever runs the agent, at decision time.

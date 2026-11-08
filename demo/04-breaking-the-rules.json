@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#console",
+  "style": { "background": "coral", "frame": "browser", "captions": true },
+  "output": { "width": 1280, "height": 720, "fps": 24, "gif": true },
+  "steps": [
+    { "click": "role=tab[name='2. Purchase ledger']", "say": "What if the agent goes rogue? There is a clearly labelled demo switch to find out." },
+    { "type": "buy sku ELE-GAME-01", "into": "label=Instruction (plain English)", "clear": true },
+    { "click": "text=Demo: let the agent break its mandate", "say": "It switches off the guard in the sandbox, so a bad choice goes through." },
+    { "click": "role=button[name='Send to agent']", "hold": 2 },
+    { "wait": "text=Order created for Games console", "hold": 2 },
+    { "scroll": "text=Purchase ledger" },
+    { "highlight": "text=Outside mandate: category not allowed, exceeds monthly cap", "text": "The record says so, honestly", "say": "The games console goes through, but the checker still records it: wrong category, over the cap.", "hold": 3 }
+  ]
+}

@@ -22,3 +22,7 @@ _tamper_check.mts
 
 # Downloaded embedding model for AGENT_MODE=engine (npm run build:engine)
 models/
+
+# Screenplay by-products (demo videos are committed, storyboards are not)
+demo/*.storyboard.png
+.screenplay/

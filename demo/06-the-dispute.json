@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#console",
+  "style": { "background": "meadow", "frame": "browser", "captions": true },
+  "output": { "width": 1280, "height": 720, "fps": 24, "gif": true },
+  "steps": [
+    { "click": "role=tab[name='4. Disputes']", "say": "Step four: a buyer disputes a charge. Here we simulate one, clearly labelled, to show the response." },
+    { "select": "label=Completed purchase", "option": "pur_seed_003" },
+    { "click": "role=button[name='Create simulated dispute']" },
+    { "wait": "role=button[name='Assemble evidence']", "hold": 1 },
+    { "click": "role=button[name='Assemble evidence']", "say": "Sentry assembles the response from the recorded evidence." },
+    { "wait": "text=Evidence chain valid", "hold": 1 },
+    { "highlight": "text=Verdict is computed by code from the evidence; the AI only writes the narrative.", "text": "Verdict computed by code", "say": "For an in-mandate purchase the verdict is defensible, and the action is to provide the evidence.", "hold": 3 }
+  ]
+}

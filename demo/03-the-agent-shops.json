@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#console",
+  "style": { "background": "citrus", "frame": "browser", "captions": true },
+  "output": { "width": 1280, "height": 720, "fps": 24, "gif": true },
+  "steps": [
+    { "click": "role=tab[name='2. Purchase ledger']", "say": "Step two: you tell the agent what to buy, in plain English." },
+    { "type": "restock the pantry basics", "into": "label=Instruction (plain English)", "clear": true },
+    { "click": "role=button[name='Send to agent']", "say": "The agent reads the shop's catalog and picks an item within your rules." },
+    { "wait": "text=Order created for", "hold": 2 },
+    { "highlight": "text=Order created for", "text": "A real order is created, ready for the buyer to approve at PayPal", "say": "It creates an order. The buyer then approves it at PayPal, sandbox here, so no real money moves." },
+    { "scroll": "text=Purchase ledger", "say": "Every choice lands in the ledger, with its mandate check beside the payment status." },
+    { "highlight": "text=Pantry basics bundle", "text": "Within mandate" , "hold": 2 }
+  ]
+}

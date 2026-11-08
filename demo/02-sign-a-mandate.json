@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#console",
+  "style": { "background": "iris", "frame": "browser", "captions": true },
+  "output": { "width": 1280, "height": 720, "fps": 24, "gif": true },
+  "steps": [
+    { "pause": 2, "say": "Step one: you sign a mandate. It is the rulebook your agent must stay inside." },
+    { "highlight": "text=Monthly cap", "text": "How much, per month", "say": "Here is one for groceries: two hundred dollars a month, groceries only." },
+    { "highlight": "text=Approval needed above", "text": "Ask me first above this", "say": "Anything above seventy-five dollars has to wait for your approval." },
+    { "click": "role=button[name='Verify signature']", "say": "Every mandate is signed. One click re-checks the signature." },
+    { "pause": 3 },
+    { "click": "role=button[name='Version history']", "say": "Change a limit and you get a new signed version. Old versions never change, so we always know which rules applied." },
+    { "pause": 3 }
+  ]
+}
