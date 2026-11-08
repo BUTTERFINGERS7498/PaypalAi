@@ -12,9 +12,11 @@
 
 ### 🎥 Watch the demo
 
-[**▶ Watch the full Sentry walkthrough (MP4)**](demo/sentry-demo-full.mp4) · [or jump to each action](#-see-it-in-action)
+[**▶ Watch the 3-minute narrated demo (MP4)**](demo/sentry-demo-3min.mp4) · [extended walkthrough with captions](demo/sentry-demo-full.mp4) · [or jump to each action](#-see-it-in-action)
 
-<!-- TODO before submitting: replace with the YouTube link (under 3 minutes). -->
+<sub>The voice-over is a built-in Windows text-to-speech voice, so it is clear but not human. The narration script is in <a href="demo/cut/narration.txt">demo/cut/narration.txt</a>.</sub>
+
+<!-- TODO before submitting: upload demo/sentry-demo-3min.mp4 to YouTube (public) and put that link here. -->
 
 </div>
 

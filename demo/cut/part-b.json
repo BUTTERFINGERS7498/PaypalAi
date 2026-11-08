@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#console",
+  "style": { "background": "dawn", "frame": "browser", "captions": true },
+  "voice": { "enabled": true, "language": "en" },
+  "output": { "width": 1280, "height": 720, "fps": 24 },
+  "steps": [
+    { "click": "role=tab[name='3. Evidence trail']", "say": "Every decision is written down: what the agent saw, what it chose, and the fingerprint of the record before it.", "audio": "voice/11.mp3" },
+    { "highlight": "text=Options the agent saw", "text": "What the agent saw, when it chose" },
+    { "click": "role=button[name='Verify whole chain']", "say": "One click checks the whole chain.", "audio": "voice/12.mp3" },
+    { "pause": 1.5 },
+    { "click": "role=tab[name='4. Disputes']", "say": "When a charge is disputed, Sentry builds the response from this evidence, and code decides the verdict. First, the rogue purchase.", "audio": "voice/13.mp3" },
+    { "click": "role=button[name='Create simulated dispute']" },
+    { "wait": "role=button[name='Assemble evidence']", "hold": 1 },
+    { "click": "role=button[name='Assemble evidence']" },
+    { "wait": "text=MANDATE BREACH", "hold": 1 },
+    { "highlight": "text=MANDATE BREACH", "text": "Computed from the evidence", "say": "Mandate breach. Sentry says accept the claim, instead of defending a purchase it should never have allowed.", "audio": "voice/14.mp3", "hold": 1 },
+    { "scroll": "text=Create simulated dispute" },
+    { "click": "role=button[name='Create simulated dispute']" },
+    { "wait": "role=button[name='Assemble evidence']", "hold": 1 },
+    { "click": "role=button[name='Assemble evidence']" },
+    { "wait": "text=DEFENSIBLE", "hold": 1 },
+    { "highlight": "text=DEFENSIBLE", "text": "Verdict computed by code", "say": "And when the agent behaved, the same process gives a defensible verdict: provide the evidence, and the record proves it.", "audio": "voice/15.mp3", "hold": 1 },
+    { "goto": "http://localhost:8099/#home", "say": "Sentry. Signed mandates, tamper-evident evidence, and honest dispute answers, on the PayPal sandbox.", "audio": "voice/16.mp3", "hold": 2 }
+  ]
+}
