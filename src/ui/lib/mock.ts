@@ -43,7 +43,7 @@ const CATALOG = [
   { sku: "GRO-BOX-B", name: "Pantry restock box B", category: "groceries", price: "51.00" },
   { sku: "GRO-HAMPER", name: "Gourmet hamper", category: "groceries", price: "60.00" },
   { sku: "ELE-ESP-01", name: "Espresso machine", category: "electronics", price: "129.00" },
-  { sku: "ELE-CON-01", name: "Games console", category: "electronics", price: "299.00" },
+  { sku: "ELE-GAME-01", name: "Games console", category: "electronics", price: "299.00" },
 ];
 
 const MKEY = "Mandate Ledger demo key";

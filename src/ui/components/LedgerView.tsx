@@ -44,7 +44,7 @@ function AskAgent() {
             <span><strong>Demo: let the agent break its mandate</strong></span>
           </label>
           <p className="small">
-            Sandbox demo only. Turns off the guard so an out-of-mandate choice goes through (try “buy sku ELE-CON-01”). The checker still records the breach honestly and a later dispute will be a MANDATE BREACH.
+            Sandbox demo only. Turns off the guard so an out-of-mandate choice goes through (try “buy sku ELE-GAME-01”). The checker still records the breach honestly and a later dispute will be a MANDATE BREACH.
           </p>
         </div>
         <div className="row">
