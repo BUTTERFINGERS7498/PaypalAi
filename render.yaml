@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: mandate-ledger
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build:ui
+    startCommand: npm run seed && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: WEBHOOK_VERIFY
+        sync: false
+      - key: CHECKOUT_MODE
+        value: payer_approval
+      - key: AGENT_MODE
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      - key: DATABASE_PATH
+        value: ./data/mandate.db
+      - key: PORT
+        value: "8787"
+      - key: NEXT_PUBLIC_API_URL
+        value: ""
+      - key: NEXT_PUBLIC_DATA_SOURCE
+        value: api
+      - key: APPROVAL_TOKEN
+        generateValue: true
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_BUYER_EMAIL
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: MANDATE_SIGNING_KEY
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
