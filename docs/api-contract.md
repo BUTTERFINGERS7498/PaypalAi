@@ -1,4 +1,4 @@
-# Mandate Ledger — API Contract
+# Sentry — API Contract
 
 Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-requests.md` or
 `handoffs/qa-findings.md`; nobody else edits this file. Derived from `implementation-plan.pdf`.

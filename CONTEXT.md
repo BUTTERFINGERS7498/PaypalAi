@@ -1,4 +1,4 @@
-# CONTEXT.md — Mandate Ledger (PayPal AI Hackathon)
+# CONTEXT.md — Sentry (PayPal AI Hackathon)
 
 Last updated: 2026-11-08 (late evening IST). Deadline: **Thu Nov 12, 2026, 12:00 pm PT**.
 Plan of record: `implementation-plan.pdf` (a private planning file, git-ignored). API of record: `docs/api-contract.md`.
@@ -79,6 +79,7 @@ To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `h
   and the demo video. Do not put owner API keys on the public instance.
 - **Hosted demo stays OPEN (decided 2026-11-08):** no approval password for judges; `APPROVAL_TOKEN` is unset on Render. Safe because the
   engine needs no key and PayPal is sandbox-only. The token feature remains in code for anyone who wants to lock a deployment.
+- **Project renamed to "Sentry" (2026-11-09).** Signing note stays "Mandate Ledger demo key" on purpose (it is inside signed payloads and tests). Repo name `PaypalAi` and the Render URL `mandate-ledger.onrender.com` are unchanged. Not checked: trademark/domain clash (Sentry is also an existing error-monitoring company).
 - `PAYPAL_ENV` stays strict (`sandbox` only); other enum env values are case-insensitive.
 - Evidence `budget_after = budget_before + price` whenever the agent made a choice, including `blocked`.
 - Unknown order OR dispute id in a webhook -> stored `processed:false, error:"unknown_purchase"`.

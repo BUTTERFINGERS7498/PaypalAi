@@ -56,7 +56,7 @@ function nonNegInt(raw: string | undefined, fallback: number): number {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if ((env.PAYPAL_ENV ?? '').trim() !== 'sandbox') {
-    throw new Error('PAYPAL_ENV must be "sandbox". Mandate Ledger never talks to live PayPal.');
+    throw new Error('PAYPAL_ENV must be "sandbox". Sentry never talks to live PayPal.');
   }
   const port = Number(env.PORT ?? 8787);
   const okPort = Number.isFinite(port) && port > 0 ? port : 8787;

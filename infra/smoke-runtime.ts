@@ -63,7 +63,7 @@ try {
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-type') ?? '', /text\/html/);
   const html = await page.text();
-  assert.match(html, /Mandate Ledger/i);
+  assert.match(html, /Sentry/i);
   const asset = html.match(/src="([^\"]+\.js[^\"]*)"/);
   assert.ok(asset, 'Static export must reference a JavaScript asset.');
   assert.equal((await fetch(new URL(asset[1].replaceAll('&amp;', '&'), base))).status, 200);

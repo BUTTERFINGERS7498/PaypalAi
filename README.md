@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧾 Mandate Ledger
+# 🧾 Sentry
 
 ![Node](https://img.shields.io/badge/Node-24-5FA04E?style=flat&logo=nodedotjs&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat&logo=typescript&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-built--in-003B57?style=flat&logo=sqlite&logoColor=white) ![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=flat&logo=nextdotjs&logoColor=white) ![PayPal](https://img.shields.io/badge/PayPal-sandbox%20only-003087?style=flat&logo=paypal&logoColor=white) ![Claude](https://img.shields.io/badge/Claude-agent-D97757?style=flat&logo=anthropic&logoColor=white) ![Tests](https://img.shields.io/badge/unit%20tests-22%20passing-0b6e4f?style=flat) ![License](https://img.shields.io/badge/license-MIT-0b6e4f?style=flat)
 
@@ -17,17 +17,17 @@
 <br />
 
 <p align="center">
-  <img src="docs/media/console-ledger.jpg" alt="The purchase ledger in the Mandate Ledger console: five completed purchases, each with a 'Within mandate' check, and one labelled 'Demo: agent overrides its mandate'." width="100%" />
+  <img src="docs/media/console-ledger.jpg" alt="The purchase ledger in the Sentry console: five completed purchases, each with a 'Within mandate' check, and one labelled 'Demo: agent overrides its mandate'." width="100%" />
 </p>
 <p align="center"><sub>The purchase ledger. Every row shows the mandate check beside the payment status. The purple row was made in the clearly labelled demo mode.</sub></p>
 
 ---
 
-## 💡 Why Mandate Ledger?
+## 💡 Why Sentry?
 
 AI agents can now spend money. When one of those purchases goes wrong, nobody can easily show **what the agent was allowed to do, what it actually saw, and whether it obeyed**. Signed-mandate protocols can prove what was *authorised*. They do not prove that the agent read a correct price, that budget remained, or that the mandate was still active at the moment of purchase. That evidence has to be captured by whoever runs the agent, at decision time.
 
-Mandate Ledger is a working prototype of that missing piece, built end to end on the PayPal sandbox:
+Sentry is a working prototype of that missing piece, built end to end on the PayPal sandbox:
 
 - A person gives the agent a **signed, scoped mandate**: a monthly cap, the allowed categories, and an amount above which a human must approve.
 - The agent shops and checks out through **real PayPal sandbox orders**.
@@ -118,7 +118,7 @@ Simulated disputes are labelled `SIMULATED` in the API and the console and are n
 ```mermaid
 flowchart LR
     UI["🖥️ Console (Next.js)<br/>or curl"] --> API["HTTP API<br/>node:http"]
-    subgraph Server["Mandate Ledger server (Node 24, TypeScript)"]
+    subgraph Server["Sentry server (Node 24, TypeScript)"]
         API --> AG["🤖 Shopping agent<br/>mock or Claude"]
         AG -- "select_item" --> CK["⚖️ Mandate checker<br/>pure code"]
         CK --> G["🚦 Gate<br/>mints approval tickets"]
@@ -521,7 +521,7 @@ Issues and pull requests are welcome. Run `npm test` and `npm run test:e2e` firs
 
 ## 📄 License
 
-[MIT](LICENSE). © 2026 Mandate Ledger contributors.
+[MIT](LICENSE). © 2026 Sentry contributors.
 
 ## 🙌 Credits
 

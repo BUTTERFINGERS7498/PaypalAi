@@ -275,7 +275,7 @@ function main(): void {
   }
   const services = createServices(cfg);
   createServer(buildHandler(services)).listen(cfg.port, '0.0.0.0', () => {
-    console.log(`Mandate Ledger ${VERSION} listening on :${cfg.port} (paypal=${cfg.paypalEnv}/${cfg.paypalMode}, agent=${cfg.agentMode}, checkout=${cfg.checkoutMode}, webhook_verify=${cfg.webhookVerify}, reconcile=${cfg.reconcileIntervalSeconds}s)`);
+    console.log(`Sentry ${VERSION} listening on :${cfg.port} (paypal=${cfg.paypalEnv}/${cfg.paypalMode}, agent=${cfg.agentMode}, checkout=${cfg.checkoutMode}, webhook_verify=${cfg.webhookVerify}, reconcile=${cfg.reconcileIntervalSeconds}s)`);
   });
   if (cfg.reconcileIntervalSeconds > 0) {
     let running = false; // never overlap passes
