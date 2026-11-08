@@ -1,107 +1,98 @@
 # CONTEXT.md — Mandate Ledger (PayPal AI Hackathon)
 
-Last updated: 2026-11-08, after the backend landed. Deadline: **Thu Nov 12, 2026, 12:00 pm PT**.
-Plan of record: `implementation-plan.pdf`. API of record: `docs/api-contract.md` (owner: backend).
+Last updated: 2026-11-08 (late evening IST). Deadline: **Thu Nov 12, 2026, 12:00 pm PT**.
+Plan of record: `implementation-plan.pdf` (a private planning file, git-ignored). API of record: `docs/api-contract.md`.
+Repo: https://github.com/BUTTERFINGERS7498/PaypalAi (currently **private**; must be public to submit), 21 commits on `main`,
+sole author BUTTERFINGERS7498. Hosted demo: https://mandate-ledger.onrender.com (Render free, auto-deploys from `main`).
 
 ## What it is
-A consumer gives an AI shopping agent a signed, scoped **mandate** (monthly cap, allowed categories,
-approval threshold). The agent shops through the PayPal **sandbox**. Every decision writes a
-hash-chained **evidence record**. On a dispute, evidence is assembled into a PayPal dispute response;
-if the agent overstepped, the system says so (`MANDATE_BREACH` -> accept_claim) instead of defending.
-PayPal SANDBOX only. We do NOT claim AP2/FIDO conformance, real liability shift or production readiness.
+A consumer gives an AI shopping agent a signed, scoped **mandate** (monthly cap, allowed categories, approval
+threshold). The agent shops through the PayPal **sandbox**; every decision writes a hash-chained **evidence record**;
+on a dispute the evidence is assembled into a response whose verdict is computed by code (`DEFENSIBLE` /
+`MANDATE_BREACH` -> accept_claim). PayPal SANDBOX only. We do NOT claim AP2/FIDO conformance, real liability shift,
+card-network integration or production readiness. The README states exactly what is real vs simulated.
 
-## Team and territories (no agent runs git; the human reviews and commits)
-| Who | Writes only | Status |
-|---|---|---|
-| Orchestrator + backend (Claude, this session) | `src/server/**`, `docs/api-contract.md`, `handoffs/**` | WP-2..6, WP-8 built, mock-verified |
-| ui (Claude, herdr terminal `ui`) | `src/ui/**` | Reported DONE (Next.js export, 4 views); not reopened by orchestrator |
-| platform (Codex, terminal `platform`) | `infra/**`, `scripts/**`, `db/**`, root configs, README | Schema, package.json, LICENSE, render.yaml, seed skeleton done; finishing README / seed check |
-| qa (Codex, terminal `qa`) | `tests/**`, `e2e/**` | 22 unit tests written; e2e in progress |
-Agents live under herdr (`hc ls`, `hc read <name>`, `hc send <name> "..."` then `hc keys <name> enter`
-for Codex). Panes were placed with `herdr-app do terminal.keep --terminal <tNN> --place right|down`.
-Terminals die when finished or killed; restart with `hc run --bg --name <n> --cwd <repo> claude|codex`.
+## Who is working
+Only the orchestrator/backend session (Claude) is active. The ui/qa/platform helper terminals (herdr) have finished
+and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups never done: `handoffs/backend-reconcile.md`
+(qa tests for `POST /api/purchases/:id/reconcile`; platform: add `RECONCILE_INTERVAL_SECONDS` to `.env.example`).
+To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
-- `docs/api-contract.md` v0.1 (+ additive `order_failed` decision, `failed` agent outcome).
-- Backend, mock mode: signed mandates + versions + revoke + verify; evidence chain + `/api/evidence/verify`
-  (tamper detected at the right seq, also when a record is re-hashed); checker; shopping agent (mock);
-  approvals (nothing charged before approve; double approve = 409; reject); rogue demo; disputes
-  (simulate -> assemble -> submit; DEFENSIBLE vs MANDATE_BREACH); webhooks (idempotent); SSE; seed adapter.
-- `npm test`: 22 pass, 0 fail. `npm run test:e2e`: 4 pass, 1 skipped (opt-in sandbox), qa still adding cases.
-- Seed: `npm run seed` x2 idempotent (1 mandate `m_seed_groceries`, 3 synthetic purchases, 9 evidence records).
-
-- **Live loop proven (2026-11-08):** live Claude via 9router (`cc/claude-sonnet-5-5`) chose GRO-PANTRY-42 under
-  the signed mandate -> real PayPal sandbox order -> buyer approved on sandbox.paypal.com -> capture
-  COMPLETED at PayPal (USD 42.00) -> ledger `completed`, evidence `selected -> order_created -> captured`,
-  chain valid. The capture trigger was a SIMULATED `CHECKOUT.ORDER.APPROVED` webhook posted locally
-  (PayPal cannot reach localhost); the capture call itself was real. Needed US sandbox business + personal
-  accounts (earlier India accounts gave "seller doesn't accept payments in your currency").
-- **Deployed + real signed webhooks proven (2026-11-08):** https://mandate-ledger.onrender.com (Render free, GitHub
-  repo BUTTERFINGERS7498/PaypalAi, auto-deploy from main). Live agent on Render (via Cloudflare tunnel to 9router,
-  model `cc/claude-sonnet-5-5`) created sandbox order 5ET23085VF241733U; buyer approved at PayPal; PayPal delivered
-  `CHECKOUT.ORDER.APPROVED` (verified=true) -> server captured (authorised_by=payer) -> `PAYMENT.CAPTURE.COMPLETED`
-  (verified=true) -> purchase `completed`; PayPal shows capture COMPLETED USD 42.00; evidence chain valid. Delivery lagged
-  ~40s+ after PayPal created the event. An unsigned fake webhook is rejected with 400.
-- **Webhook safety net proven live (2026-11-08, commit ac826d7):** order 6YL255807R517931L: the reconciler
-  (poll every 15 s, asks PayPal for order state) captured it at 13:29:06 (`captured` evidence `source=reconcile`,
-  `authorised_by=payer`); the real signed `CHECKOUT.ORDER.APPROVED` webhook arrived 7 s later and was harmless (one
-  capture at PayPal, zero `order_failed` records); `PAYMENT.CAPTURE.COMPLETED` verified+processed; chain valid.
-- Render env gotchas hit: WEBHOOK_VERIFY typed "Off" (fixed + config now case-insensitive); ANTHROPIC_MODEL needed the
-  `cc/` prefix for 9router. The Cloudflare tunnel to the laptop is fragile for judging (Dec 1-15): prefer a real
-  Anthropic key (ANTHROPIC_BASE_URL empty, model claude-sonnet-5-5) before submitting.
-- Disputes API: read/list works with the US app (0 disputes); write calls (provide-evidence, accept-claim)
-  untested. Creating a dispute via `POST /v1/customer/disputes` got through schema validation (body needs
-  `disputed_transactions[].buyer_transaction_id`, `reason`, `dispute_amount`, and
-  `extensions.merchandize_dispute_properties.{issue_type,product_details.{description,product_received}}`;
-  `sub_reasons` as objects was malformed) but PayPal answers `TRANSACTION_NOT_ELIGIBLE` for our fresh
-  captures, and the buyer could not open one in the sandbox UI either. Retry later (eligibility may be
-  time-based); otherwise ship with `simulated` disputes, clearly labelled.
-- Rogue purchase proven live: `pur_..DMFR` Wireless headphones $39 captured at PayPal with
-  `within_mandate:false`, `breaches:[category_not_allowed]`, `demo_rogue:true`; without the flag live Claude
-  refused. Simulated disputes assembled live: in-mandate -> DEFENSIBLE/provide_evidence, rogue ->
-  MANDATE_BREACH/accept_claim. Fixed a real bug: narratives were truncated (max_tokens 700 vs hidden
-  reasoning); now 3000 plus guards (cut-off / missing-verdict replies fall back to the template).
+- **Backend** (`src/server`): signed + versioned mandates (ed25519), deterministic checker, gate (only place that mints PayPal
+  tickets), hash-chained evidence (tamper detected), approvals, rogue demo, disputes (verdict by code), webhooks (signature
+  verified, idempotent), SSE, seed adapter, PayPal sandbox + mock clients.
+- **Live loop on the real PayPal sandbox:** agent -> order -> buyer approves on sandbox.paypal.com -> capture COMPLETED at PayPal
+  -> ledger `completed` -> evidence chain valid. Needed **US** sandbox business + personal accounts (India accounts gave
+  "seller doesn't accept payments in your currency").
+- **Real signed webhooks on Render:** `CHECKOUT.ORDER.APPROVED` + `PAYMENT.CAPTURE.COMPLETED` verified + processed; unsigned
+  fake event rejected with 400. PayPal delivery can lag ~40 s.
+- **Webhook safety net** (`gate.ts` reconcile + `POST /api/purchases/:id/reconcile` + poller every 15 s): captured a
+  buyer-approved order before the webhook; the late webhook was harmless (one capture, no false `order_failed`).
+- **Rogue purchase live:** out-of-category item captured at PayPal with `within_mandate:false`, `demo_rogue:true`; without the
+  flag live Claude refused. Simulated disputes: in-mandate -> DEFENSIBLE/provide_evidence, rogue -> MANDATE_BREACH/accept_claim.
+  Fixed: dispute narratives were truncated (max_tokens 700); now 3000 + guards.
+- **Agent endpoint protection:** when `APPROVAL_TOKEN` is set, `POST /api/agent/instructions` and `.../reconcile` need the bearer
+  token (401 first, before any limit); rate limits 30 requests/hour per client and 300/day overall against real sandbox
+  (`AGENT_RATE_LIMIT_PER_HOUR`, `AGENT_DAILY_LIMIT`; off in mock mode). In-memory, per process. Verified live: 401 without a token.
+- **On-server semantic engine** (`AGENT_MODE=engine`, `src/server/engine.ts`): no API key, no outbound AI call. Local
+  `Xenova/all-MiniLM-L6-v2` embeddings (~23 MB, ONNX via `@huggingface/transformers`) + rules (sku, price caps) + keyword fallback.
+  Spike: 16/18 acceptable top picks vs 12/18 keyword baseline; whole server ~149 MB RSS; fine in a 512 MB / 0.1 CPU container.
+  Tuned after smoke test: `NEAR_TIE=0.03`, `MIN_SIMILARITY=0.42`, `CAP_GAP=0.10`. Known weak: abstract asks ("something warm to
+  drink in the morning"). **Live on Render:** `/api/health` shows `agent_mode: engine`, `engine.state: ready`,
+  `backend: embeddings`, load 3.2 s on the free CPU (limit 0.15 CPU). Build runs `npm run build:engine` (fetches the model into
+  git-ignored `./models`); `render.yaml` sets `ONNXRUNTIME_NODE_INSTALL=skip`.
+- **Tests:** `npm test` 36 pass (22 + 14 engine); `npm run test:e2e` 4 pass, 1 skipped (opt-in real-sandbox). Model tests skip,
+  not fail, when the model is absent.
+- **UI:** shows "on-server semantic engine (not an LLM)" and a note on the ask form; demo-mode hint fixed to `ELE-GAME-01`.
+- **README** rewritten (hero + screenshots in `docs/media/`, real-vs-simulated table, setup, Render, API, troubleshooting).
 
 ## Half-finished / unverified
-- PayPal Disputes write calls (`provideEvidence`, `acceptClaim`), real dispute events, live dispute narrative
-  (`disputes.ts` `narrative`), live rogue run: not yet run against the sandbox.
-- `.env` still has PAYPAL_MODE=mock, AGENT_MODE=mock and ANTHROPIC_MODEL without the `cc/` prefix: live runs
-  override these via process env (`$env:PAYPAL_MODE='sandbox'` etc.); the human should fix the file.
-- Webhooks from real PayPal; Render deployment; `ui` console not reopened/verified in a browser by orchestrator.
-- qa e2e coverage for disputes, rogue path, approvals still being written (`e2e/`, `handoffs/qa-findings.md`).
-- platform: README judge-path, `render.yaml` start command `npm run seed && npm start` (seed adapter now exists).
+- **A full agent request on the hosted console is unverified:** the agent needs the approval password (the human has it; the
+  assistant does not). Engine + real PayPal sandbox together is untested (engine only ran against mock PayPal).
+- **Real PayPal dispute round trip:** `POST /v1/customer/disputes` passes schema validation but PayPal answers
+  `TRANSACTION_NOT_ELIGIBLE` for our fresh captures (buyer could not open one in the sandbox UI either). Disputes **list** works.
+  provide-evidence / accept-claim untested. Retry later; otherwise ship with labelled `simulated` disputes.
+- **Render env needs checking by the human:** `AGENT_MODE=engine` is set; whether `ANTHROPIC_API_KEY/BASE_URL/MODEL` were deleted
+  is unknown (health does not show it). Render memory chart is empty on the free plan (no direct reading).
+- **Security follow-up:** the 9router dashboard showed "default password" with "Allow dashboard access via tunnel" ON. The human was
+  told to change the password and turn tunnel access off; unconfirmed. Engine mode removes any need for the tunnel.
+- Not built (designed only): bring-your-own-key / free-provider adapter (Anthropic, Gemini, Groq, OpenRouter via an OpenAI-compatible
+  path); the human chose the on-server engine instead for now.
 
 ## Next step (in order)
-1. Human: create a new `.env` (old one was deleted with the old project): PayPal sandbox business app
-   `PAYPAL_CLIENT_ID/SECRET`, buyer email, and the 9router `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL`
-   (use model id `cc/claude-sonnet-5-5`). Never paste secrets into chat or notes.
-2. Run the **Day-1 spikes** (contract section 12): (a) does the sandbox app allow the Disputes API?
-   (b) can an order be captured without the buyer approving in a browser (`CHECKOUT_MODE=card`) or must we
-   use `payer_approval`? Then run one real sandbox order end to end and record what happened.
-3. Render: create the account + Blueprint from `render.yaml`; register `/webhooks/paypal`; set
-   `PAYPAL_WEBHOOK_ID`; done-test = a webhook POST visible in Render logs and `GET /api/webhooks` verified.
-4. Review qa/ui/platform DONE reports by running things, not trusting summaries.
-5. Feature freeze Tue Nov 11 midday; demo video < 3 min (script in plan section 8.1); Devpost text, AI-tools disclosure.
+1. Human: in Render, **delete `APPROVAL_TOKEN`** (decision: demo stays open, no password) and redeploy; then try the engine in the
+   console (`breakfast stuff`, `coffee beans under $10`) and tell the orchestrator the result. Rate limits still apply.
+2. Make the repo **public** (GitHub Settings -> Danger Zone) and confirm MIT shows in the About panel.
+3. Record the demo video (< 3 min, YouTube public; script in plan section 8.1) and put its link at the top of `README.md`
+   (an HTML `TODO` comment marks the spot). Write the Devpost text + AI-tools disclosure (README has an "AI tools" section).
+4. Optional: retry the real dispute (`POST /v1/customer/disputes`) once more later; run engine + real PayPal sandbox once.
+5. Optional: qa follow-ups (`handoffs/backend-reconcile.md`), `.env.example` `RECONCILE_INTERVAL_SECONDS`, BYOK adapter.
+6. Feature freeze Tue Nov 11 midday; submit before Wed Nov 12 12:00 pm PT.
 
 ## Decisions (do not re-litigate)
-- Stack: Next.js (static export served from `dist/ui`), Node 24 TypeScript (type-stripping, `node:http`,
-  `node:sqlite`, no framework), SQLite (Render disk is ephemeral: seed restores demo state), Claude via the
-  Anthropic SDK (through 9router when `ANTHROPIC_BASE_URL` is set).
-- The **checker is code, not the LLM**; the **dispute verdict is computed from evidence by code**; the LLM
-  only writes narrative. PayPal mutations need a ticket minted only by `src/server/gate.ts`.
+- Stack: Next.js static export served from `dist/ui`; Node 24 TypeScript (type-stripping, `node:http`, `node:sqlite`); SQLite
+  (Render disk is ephemeral: seed restores the synthetic demo state on each boot).
+- The **checker is code, not a model**; the **dispute verdict is computed from evidence by code**; a model may only write narrative.
+  PayPal mutations need a ticket minted only by `src/server/gate.ts`. The engine/agent only PROPOSES.
+- Hosted demo default agent = the **on-server engine** (free, no key, no owner credentials on Render). Claude (`live`) is for local runs
+  and the demo video. Do not put owner API keys on the public instance.
+- **Hosted demo stays OPEN (decided 2026-11-08):** no approval password for judges; `APPROVAL_TOKEN` is unset on Render. Safe because the
+  engine needs no key and PayPal is sandbox-only. The token feature remains in code for anyone who wants to lock a deployment.
+- `PAYPAL_ENV` stays strict (`sandbox` only); other enum env values are case-insensitive.
 - Evidence `budget_after = budget_before + price` whenever the agent made a choice, including `blocked`.
 - Unknown order OR dispute id in a webhook -> stored `processed:false, error:"unknown_purchase"`.
 - `demo_rogue` bypasses only the guard's `blocked` outcome; the checker still records `within_mandate:false`.
-- Pivot rule (plan): if a real sandbox order from an agent decision is not working by Sun night, cut
-  disputes/rogue and ship mandate + evidence only.
+- Pivot rule from the plan (cut disputes/rogue if the real order path failed) is moot: the real order path works.
 
 ## Blockers
-- Needs the human: credentials, Render account, any PayPal sandbox account work, git/publishing.
-- Possible: Disputes API may be limited-release; headless capture may be unavailable (fallbacks above).
+- Human-only: Render env/password decisions, making the repo public, the demo video, Devpost submission, any PayPal sandbox account work.
+- PayPal real dispute creation (see above); may stay simulated.
 
 ## Notes
-- The seeded grocery catalog tops out at $60, so the over-$75 approval demo needs a lower threshold
-  (edit the mandate limits) or a pricier in-category item; undecided.
-- Another session created `implementation-plan.pdf` and `make_impl_plan_pdf.py`; `hackathon-notes/`
-  (rules + strategy PDF) sits in this folder.
-- Old invoicing-clerk project was deleted on purpose; nothing from it is reusable except as ideas.
+- Local `.env` (never commit; git-ignored) is set to PAYPAL_MODE=sandbox, AGENT_MODE=live, model `cc/claude-sonnet-5-5` via 9router
+  (`http://localhost:20128`). For local engine runs override: `$env:AGENT_MODE='engine'`, run `npm run build:engine` once.
+- Seeded grocery catalog tops out at $60, so an over-$75 approval needs a lower threshold or a second electronics mandate (README explains).
+- Tooling I used and cleaned up: Docker Desktop (started then stopped), scratch folders in TEMP. `hackathon-notes/` and the plan PDF
+  are git-ignored. Commit author identity is set per-repo (BUTTERFINGERS7498 noreply email); never add Co-authored-by trailers; never push
+  without being asked.
