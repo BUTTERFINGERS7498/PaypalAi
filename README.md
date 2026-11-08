@@ -10,7 +10,11 @@
 
 <sub>Built for the <b>PayPal AI Hackathon 2026</b> by <b>Sarvagya Sharma</b> (<a href="https://github.com/BUTTERFINGERS7498">@BUTTERFINGERS7498</a>). PayPal <b>sandbox</b> only: no real money moves.</sub>
 
-<!-- TODO before submitting: add the demo video link here (YouTube, under 3 minutes). -->
+### 🎥 Watch the demo
+
+[**▶ Watch the full Sentry walkthrough (MP4)**](demo/sentry-demo-full.mp4) · [or jump to each action](#-see-it-in-action)
+
+<!-- TODO before submitting: replace with the YouTube link (under 3 minutes). -->
 
 </div>
 
@@ -28,62 +32,62 @@
 
 ---
 
-## 🎬 Demo video, in seven short pieces
+## 🎬 See it in action
 
-Watch the whole thing in one go, or jump to the piece you care about. Click a picture to play it (GitHub opens the video in its own player). They use captions instead of a voice-over, so they work on mute.
+Every action below is a real recording of the console, with captions so it works on mute. Click **▶ watch the full-quality MP4** under any of them for a sharper version, or watch the whole thing in one go: **[▶ full walkthrough (4 min 21 s)](demo/sentry-demo-full.mp4)**.
 
-**▶ [Watch the full walkthrough (4 min 21 s)](demo/sentry-demo-full.mp4)**
+### 1. The idea in one minute
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <a href="demo/01-the-idea.mp4"><img src="demo/posters/01-the-idea.jpg" alt="Chapter 1: the idea, shown on the landing page" width="100%" /></a><br />
-      <b>1. The idea</b> · 49 s<br />
-      <sub>The helper-robot story, then one purchase followed step by step.</sub>
-    </td>
-    <td width="50%" valign="top">
-      <a href="demo/02-sign-a-mandate.mp4"><img src="demo/posters/02-sign-a-mandate.jpg" alt="Chapter 2: signing a mandate" width="100%" /></a><br />
-      <b>2. Sign a mandate</b> · 34 s<br />
-      <sub>Limits, the approval line, the signature check and version history.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <a href="demo/03-the-agent-shops.mp4"><img src="demo/posters/03-the-agent-shops.jpg" alt="Chapter 3: the agent shops" width="100%" /></a><br />
-      <b>3. The agent shops</b> · 35 s<br />
-      <sub>Plain-English instruction, an order created, and the ledger row with its mandate check.</sub>
-    </td>
-    <td width="50%" valign="top">
-      <a href="demo/04-breaking-the-rules.mp4"><img src="demo/posters/04-breaking-the-rules.jpg" alt="Chapter 4: the agent breaks its mandate" width="100%" /></a><br />
-      <b>4. Breaking the rules</b> · 32 s<br />
-      <sub>The labelled demo switch lets a bad choice through, and the record says so.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <a href="demo/05-the-evidence-trail.mp4"><img src="demo/posters/05-the-evidence-trail.jpg" alt="Chapter 5: the evidence trail" width="100%" /></a><br />
-      <b>5. The evidence trail</b> · 27 s<br />
-      <sub>What the agent saw and chose, and the one-click chain check.</sub>
-    </td>
-    <td width="50%" valign="top">
-      <a href="demo/06-the-dispute.mp4"><img src="demo/posters/06-the-dispute.jpg" alt="Chapter 6: a dispute that is defensible" width="100%" /></a><br />
-      <b>6. The dispute</b> · 41 s<br />
-      <sub>A simulated dispute on an in-mandate purchase: verdict DEFENSIBLE, provide the evidence.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <a href="demo/07-when-the-agent-is-wrong.mp4"><img src="demo/posters/07-when-the-agent-is-wrong.jpg" alt="Chapter 7: a dispute that is a mandate breach" width="100%" /></a><br />
-      <b>7. When the agent is wrong</b> · 43 s<br />
-      <sub>The same process on the rogue purchase: verdict MANDATE BREACH, accept the claim.</sub>
-    </td>
-    <td width="50%" valign="top"> </td>
-  </tr>
-</table>
+An AI agent can spend your money, but nobody wrote down what it was allowed to buy. The landing page tells that story, then steps through one purchase.
+
+<p align="center"><img src="docs/media/action-story.gif" alt="The landing page story, then the walkthrough following a games console purchase from signed mandate to dispute verdict" width="100%" /></p>
+<p align="center"><a href="demo/01-the-idea.mp4">▶ watch the full-quality MP4 (49 s)</a></p>
+
+### 2. Sign a mandate
+
+The rulebook your agent must stay inside: a monthly cap, allowed categories, and the amount above which it must ask you first. One click re-checks the signature, and every change is a new signed version.
+
+<p align="center"><img src="docs/media/action-mandate.gif" alt="The Mandates view: highlighting the monthly cap and approval threshold, verifying the signature and opening the version history" width="100%" /></p>
+<p align="center"><a href="demo/02-sign-a-mandate.mp4">▶ watch the full-quality MP4 (34 s)</a></p>
+
+### 3. Tell the agent what to buy
+
+Type a plain-English instruction. The agent picks an item, the checker confirms it is inside the mandate, and a PayPal sandbox order is created for the buyer to approve.
+
+<p align="center"><img src="docs/media/action-agent.gif" alt="Typing 'restock the pantry basics', sending it to the agent, the order being created and the new ledger row marked Within mandate" width="100%" /></p>
+<p align="center"><a href="demo/03-the-agent-shops.mp4">▶ watch the full-quality MP4 (35 s)</a></p>
+
+### 4. Break the rules on purpose
+
+A clearly labelled demo switch turns the guard off so a bad choice goes through. The checker still records it honestly: wrong category, over the cap.
+
+<p align="center"><img src="docs/media/action-rogue.gif" alt="Ticking the demo switch, asking for sku ELE-GAME-01, and the ledger showing the games console as Outside mandate" width="100%" /></p>
+<p align="center"><a href="demo/04-breaking-the-rules.mp4">▶ watch the full-quality MP4 (32 s)</a></p>
+
+### 5. Follow the evidence trail
+
+Every decision is a record: the instruction, every option the agent saw with its price, and the choice. Each record carries the fingerprint of the one before it, and one click verifies the whole chain.
+
+<p align="center"><img src="docs/media/action-evidence.gif" alt="The Evidence trail view: the options the agent saw, the chain-valid badge, and verifying the whole chain" width="100%" /></p>
+<p align="center"><a href="demo/05-the-evidence-trail.mp4">▶ watch the full-quality MP4 (27 s)</a></p>
+
+### 6. A dispute the agent can defend
+
+Simulate a dispute on an in-mandate purchase. The response is assembled from the evidence, and the verdict is computed by code: **DEFENSIBLE**, so provide the evidence.
+
+<p align="center"><img src="docs/media/action-dispute-defensible.gif" alt="Creating a simulated dispute on Rolled oats and assembling the evidence, with verdict DEFENSIBLE and the chain valid" width="100%" /></p>
+<p align="center"><a href="demo/06-the-dispute.mp4">▶ watch the full-quality MP4 (41 s)</a></p>
+
+### 7. A dispute the agent cannot defend
+
+The same process on the rogue purchase gives **MANDATE BREACH**, and the action is to accept the claim. Sentry tells the truth instead of defending a bad purchase.
+
+<p align="center"><img src="docs/media/action-dispute-breach.gif" alt="Creating a simulated dispute on the games console and assembling the evidence, with verdict MANDATE BREACH" width="100%" /></p>
+<p align="center"><a href="demo/07-when-the-agent-is-wrong.mp4">▶ watch the full-quality MP4 (43 s)</a></p>
 
 > **How these were recorded, honestly.** They were filmed on a local run with the **mock PayPal client** and the on-server semantic engine, so nothing in them touches PayPal. The step where the buyer approves at PayPal is stood in for by posting the same `CHECKOUT.ORDER.APPROVED` webhook PayPal would send (`demo/approve-orders.mjs`). Disputes are the labelled **simulated** ones. The real PayPal sandbox path is described in [Run it against the real PayPal sandbox](#-run-it-against-the-real-paypal-sandbox).
 >
-> **Re-make them:** each piece is a scenario file in [`demo/`](demo) (`01-…json` to `07-…json`), rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) (`npx agent-screenplay record demo/01-the-idea.json`).
+> **Re-make them:** each piece is a scenario file in [`demo/`](demo) (`01-…json` to `07-…json`), rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) (`npx agent-screenplay record demo/01-the-idea.json`). The inline GIFs are cut from the MP4s with ffmpeg.
 
 ---
 
