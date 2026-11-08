@@ -8,6 +8,7 @@ _Newest first. Every breaking change gets a dated line here._
 
 - 2026-11-08 — v0.1 initial contract. Nothing to migrate.
 - 2026-11-08 (additive, not breaking) — evidence `decision` gains `order_failed`.
+- 2026-11-08 (additive, not breaking) — `POST /api/purchases/:id/reconcile`, env `RECONCILE_INTERVAL_SECONDS`, and `data.source` on `captured` records (webhook safety net).
 
 ---
 
@@ -71,6 +72,7 @@ If `APPROVAL_TOKEN` is set, these require `Authorization: Bearer <APPROVAL_TOKEN
 | `ANTHROPIC_MODEL` | no | `claude-sonnet-5-5` | behind a gateway use its id (9router: `cc/claude-sonnet-5-5`) |
 | `AGENT_MODE` | no | `live` | `live` Claude tool-calling; `mock` deterministic parser (tests) |
 | `APPROVAL_TOKEN` | no | — | see Auth |
+| `RECONCILE_INTERVAL_SECONDS` | no | `15` (`PAYPAL_MODE=sandbox`), `0` (`mock`) | seconds between automatic reconciliation passes (webhook safety net, see `POST /api/purchases/:id/reconcile`). `0` turns the poller off. On Render's free plan it only runs while the instance is awake. |
 | `MANDATE_SIGNING_KEY` | no | generated | base64 ed25519 private key (PKCS8 DER). If unset, generated on first boot and persisted in the DB table `signing_keys` |
 | `DATABASE_PATH` | no | `./data/mandate.db` | |
 | `PORT`, `PUBLIC_BASE_URL` | no | `8787`, `http://localhost:8787` | |
@@ -291,6 +293,19 @@ created; `purchase.status: failed`, reason in the evidence `order_failed` record
 - `GET /api/purchases?status=&mandate_id=` → `{ "purchases": [Purchase] }` (newest first)
 - `GET /api/purchases/:id` → `Purchase`
 - `GET /api/purchases/:id/evidence` → `{ "records": [EvidenceRecord], "chain_valid": true }` (oldest first; this purchase's decision trail)
+
+- `POST /api/purchases/:id/reconcile` (no body, open) → `200 { "purchase": Purchase, "action": "captured"|"completed"|"waiting"|"skipped"|"error", "paypal_status": "APPROVED"|… }`
+  **Webhook safety net.** For an `awaiting_payer` purchase, asks PayPal for the order's state:
+  `APPROVED` (the buyer approved at PayPal) → the gate captures it (`action: captured`; evidence
+  `captured` has `data.authorised_by: "payer"`, `data.source: "reconcile"`); `COMPLETED` → recorded as
+  completed (`action: completed`); anything else (`CREATED`, `PAYER_ACTION_REQUIRED`, `VOIDED`) →
+  `action: waiting`, nothing is called on PayPal. It can never capture an order PayPal has not
+  approved, so the buyer's approval stays the only authorisation. Safe to call repeatedly and
+  concurrently with the webhook: a purchase leaves `awaiting_payer` exactly once, and a losing
+  racer never writes an `order_failed` record. `404` for an unknown purchase.
+  The server also runs this automatically every `RECONCILE_INTERVAL_SECONDS` (below) for the newest
+  ≤10 `awaiting_payer` purchases from the last 24 h, and logs `[reconcile] …` when it captures one.
+  `data.source` on `captured` records is one of `webhook`, `reconcile`, `card_checkout`, `direct`.
 
 ### Approvals
 - `GET /api/approvals?status=pending` → `{ "approvals": [Approval] }`

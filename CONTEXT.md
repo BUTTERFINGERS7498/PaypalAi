@@ -36,6 +36,15 @@ Terminals die when finished or killed; restart with `hc run --bg --name <n> --cw
   chain valid. The capture trigger was a SIMULATED `CHECKOUT.ORDER.APPROVED` webhook posted locally
   (PayPal cannot reach localhost); the capture call itself was real. Needed US sandbox business + personal
   accounts (earlier India accounts gave "seller doesn't accept payments in your currency").
+- **Deployed + real signed webhooks proven (2026-11-08):** https://mandate-ledger.onrender.com (Render free, GitHub
+  repo BUTTERFINGERS7498/PaypalAi, auto-deploy from main). Live agent on Render (via Cloudflare tunnel to 9router,
+  model `cc/claude-sonnet-5-5`) created sandbox order 5ET23085VF241733U; buyer approved at PayPal; PayPal delivered
+  `CHECKOUT.ORDER.APPROVED` (verified=true) -> server captured (authorised_by=payer) -> `PAYMENT.CAPTURE.COMPLETED`
+  (verified=true) -> purchase `completed`; PayPal shows capture COMPLETED USD 42.00; evidence chain valid. Delivery lagged
+  ~40s+ after PayPal created the event. An unsigned fake webhook is rejected with 400.
+- Render env gotchas hit: WEBHOOK_VERIFY typed "Off" (fixed + config now case-insensitive); ANTHROPIC_MODEL needed the
+  `cc/` prefix for 9router. The Cloudflare tunnel to the laptop is fragile for judging (Dec 1-15): prefer a real
+  Anthropic key (ANTHROPIC_BASE_URL empty, model claude-sonnet-5-5) before submitting.
 - Disputes API: read/list works with the US app (0 disputes); write calls (provide-evidence, accept-claim)
   untested. Creating a dispute via `POST /v1/customer/disputes` got through schema validation (body needs
   `disputed_transactions[].buyer_transaction_id`, `reason`, `dispute_amount`, and
