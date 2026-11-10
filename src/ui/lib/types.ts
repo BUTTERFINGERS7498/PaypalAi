@@ -57,6 +57,8 @@ export interface Purchase {
   /** Set while the money is held at PayPal for a human decision. */
   paypal_authorization_id?: string | null;
   hold_expires_at?: string | null;
+  /** Total refunded so far (partial refunds); null = nothing refunded. */
+  refunded_value?: string | null;
   approval_id: string | null;
   dispute_id: string | null;
   created_at: string;
@@ -90,7 +92,9 @@ export type Decision =
   | "refunded"
   | "refund_failed"
   | "authorized"
-  | "voided";
+  | "voided"
+  | "paid_out"
+  | "payout_failed";
 
 export interface EvidenceRecord {
   record_id: string;
@@ -126,6 +130,8 @@ export interface DisputePacket {
   paypal_response: unknown;
   /** Set when accepting the claim refunded the buyer at PayPal. */
   refund?: { paypal_refund_id: string; status: string; amount: Money; source: "refund_api" | "accept_claim"; refunded_at: string } | null;
+  /** Set when the buyer was paid back by a PayPal payout because a refund was not possible. */
+  payout?: { payout_batch_id: string; batch_status: string; item_status: string | null; amount: Money; receiver: string; error: string | null; created_at: string; checked_at: string } | null;
 }
 
 export interface Dispute {
@@ -176,6 +182,26 @@ export interface AgentTrace {
   injection?: string[];
 }
 
+export interface WebhookEvent {
+  id: string;
+  event_type: string;
+  resource_type: string | null;
+  received_at: string;
+  verified: boolean;
+  processed: boolean;
+  purchase_id: string | null;
+  error: string | null;
+}
+
+export interface PurchaseProof {
+  purchase: Purchase;
+  recommendation: "ship" | "wait" | "do_not_ship";
+  reasons: string[];
+  mandate: { id: string; version: number; signature: VerifyResult };
+  chain: { valid: boolean; head_hash: string; broken_at_seq: number | null };
+  evidence: { count: number; first: string | null; last: string | null; last_hash: string | null };
+}
+
 export interface MandateDraft {
   label: string;
   limits: { monthly_cap: string | null; categories: string[]; approval_above: string | null; ask_when_unsure: boolean };
@@ -207,6 +233,8 @@ export interface Health {
   checkout_mode: string;
   webhook_verify: string;
   version: string;
+  /** Public sandbox client id for the PayPal JS SDK button; null in mock mode. */
+  paypal_client_id?: string | null;
   /** Present only when the server runs AGENT_MODE=engine: 'embeddings' once the model is loaded, else the keyword fallback. */
   engine?: { state: string; backend: "embeddings" | "keyword"; model: string; load_ms: number | null; error: string | null };
 }
@@ -240,6 +268,11 @@ export interface Api {
   instruct(b: { mandate_id: string; text: string; demo_rogue: boolean }): Promise<AgentResult>;
   listPurchases(): Promise<Purchase[]>;
   purchaseEvidence(id: string): Promise<{ records: EvidenceRecord[]; chain_valid: boolean }>;
+  purchaseWebhooks(id: string): Promise<{ events: WebhookEvent[]; webhook_verify: string }>;
+  /** Ask the server to check the order at PayPal and capture it if the buyer approved (the reconcile route). */
+  reconcilePurchase(id: string): Promise<{ purchase: Purchase; action: string; paypal_status: string | null }>;
+  /** What a merchant checks before shipping an agent's order. */
+  purchaseProof(id: string): Promise<PurchaseProof>;
   verifyChain(): Promise<ChainVerify>;
   listApprovals(): Promise<Approval[]>;
   decideApproval(
@@ -249,9 +282,11 @@ export interface Api {
   ): Promise<{ approval: Approval; purchase: Purchase }>;
   listDisputes(): Promise<Dispute[]>;
   syncDisputes(): Promise<Dispute[]>;
-  simulateDispute(b: { purchase_id: string; reason?: string }): Promise<Dispute>;
+  simulateDispute(b: { purchase_id: string; reason?: string; amount?: string }): Promise<Dispute>;
   assembleDispute(id: string): Promise<Dispute>;
   submitDispute(id: string, b: { decided_by: string }): Promise<Dispute>;
+  payoutDispute(id: string, b: { decided_by: string }): Promise<Dispute>;
+  checkPayout(id: string): Promise<Dispute>;
   subscribe(handler: (e: StreamEvent) => void): () => void;
 }
 

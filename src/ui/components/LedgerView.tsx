@@ -6,6 +6,7 @@ import { AgGridReact } from "ag-grid-react";
 import { fmtMoney, fmtTime, reasonLabel } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { AgentResult, Purchase } from "../lib/types";
+import PayPalButton from "./PayPalButton";
 import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -38,6 +39,7 @@ function Receipts({ purchases, label }: { purchases: Purchase[]; label: (id: str
               <span className="row" style={{ gap: 4 }}>
                 <StatusChip status={p.status} />
                 {p.status === "pending_approval" && p.paypal_authorization_id && <Chip tone="info" title={`PayPal authorization ${p.paypal_authorization_id}`}>held</Chip>}
+                {p.status !== "refunded" && p.refunded_value && <Chip tone="info">partly refunded · ${p.refunded_value}</Chip>}
               </span>
             </div>
             <h3 style={{ margin: "8px 0 2px" }}>{p.item_name}</h3>
@@ -60,7 +62,7 @@ function Receipts({ purchases, label }: { purchases: Purchase[]; label: (id: str
 }
 
 function AskAgent() {
-  const { api, mandates, go, health } = useStore();
+  const { api, mandates, go, health, purchases } = useStore();
   const active = mandates.filter((m) => m.status === "active");
   const [mid, setMid] = useState("");
   const [text, setText] = useState("restock the pantry basics");
@@ -130,6 +132,7 @@ function AskAgent() {
             )}
             {result.purchase && <button className="sx-btn" onClick={() => go("evidence", result.purchase!.id)}>View evidence trail</button>}
           </div>
+          {result.purchase && <PayPalButton purchase={purchases.find((x) => x.id === result.purchase!.id) ?? result.purchase} />}
         </Notice>
       )}
     </Section>

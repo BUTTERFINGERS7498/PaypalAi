@@ -162,10 +162,16 @@ export class SandboxPaypalClient implements PaypalClient {
     }));
   }
 
-  async provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string }): Promise<Record<string, unknown>> {
+  async provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string; pdf?: Buffer; filename?: string }): Promise<Record<string, unknown>> {
     assertTicket(ticket);
+    // NOTE (feature B3): the attachment follows PayPal's documented multipart shape (input JSON + evidence-file parts,
+    // referenced by name), but no real sandbox dispute could be opened, so this call is NOT verified against PayPal.
     const form = new FormData();
-    form.append('input', new Blob([JSON.stringify({ evidences: [{ evidence_type: 'OTHER', notes: evidence.notes.slice(0, 2000) }] })], { type: 'application/json' }), 'input.json');
+    const name = evidence.filename ?? 'sentry-evidence.pdf';
+    const item: Record<string, unknown> = { evidence_type: 'OTHER', notes: evidence.notes.slice(0, 2000) };
+    if (evidence.pdf) item.documents = [{ name }];
+    form.append('input', new Blob([JSON.stringify({ evidences: [item] })], { type: 'application/json' }), 'input.json');
+    if (evidence.pdf) form.append('evidence-file', new Blob([new Uint8Array(evidence.pdf)], { type: 'application/pdf' }), name);
     return this.call('POST', `/v1/customer/disputes/${encodeURIComponent(disputeId)}/provide-evidence`, undefined, {}, form);
   }
 
@@ -178,6 +184,25 @@ export class SandboxPaypalClient implements PaypalClient {
       { 'paypal-request-id': `mandate-refund-${r.requestId}`, prefer: 'return=representation' });
     if (!res.id) throw new PaypalError('PayPal refund returned no id', 502, null);
     return { paypal_refund_id: String(res.id), status: String(res.status ?? 'UNKNOWN') };
+  }
+
+  async createPayout(ticket: ApprovalTicket, p: { amount: { currency_code: string; value: string }; receiverEmail: string; note: string; senderBatchId: string; senderItemId: string }): Promise<{ payout_batch_id: string; batch_status: string }> {
+    assertTicket(ticket);
+    // Checked 2026-11-11: the app has the payouts scope; a payout to the sandbox account that also sends it is
+    // DENIED with SELF_PAY_NOT_ALLOWED, so the receiver must be a different sandbox account.
+    const res = await this.call('POST', '/v1/payments/payouts', {
+      sender_batch_header: { sender_batch_id: p.senderBatchId, email_subject: 'Your refund (PayPal sandbox)' },
+      items: [{ recipient_type: 'EMAIL', amount: { value: p.amount.value, currency: p.amount.currency_code }, receiver: p.receiverEmail, note: p.note.slice(0, 4000), sender_item_id: p.senderItemId }],
+    });
+    const id = res.batch_header?.payout_batch_id;
+    if (!id) throw new PaypalError('PayPal payout returned no batch id', 502, null);
+    return { payout_batch_id: String(id), batch_status: String(res.batch_header?.batch_status ?? 'PENDING') };
+  }
+
+  async getPayout(batchId: string): Promise<{ batch_status: string; item_status: string | null; error: string | null }> {
+    const res = await this.call('GET', `/v1/payments/payouts/${encodeURIComponent(batchId)}`);
+    const item = res.items?.[0];
+    return { batch_status: String(res.batch_header?.batch_status ?? 'UNKNOWN'), item_status: item?.transaction_status ?? null, error: item?.errors?.name ?? null };
   }
 
   async acceptClaim(ticket: ApprovalTicket, disputeId: string, accept: { note: string }): Promise<Record<string, unknown>> {

@@ -6,6 +6,12 @@ Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-r
 ## Breaking changes
 _Newest first. Every breaking change gets a dated line here._
 
+- 2026-11-11 (additive, not breaking) — group B: `GET /api/purchases/:id/webhooks` (events for one purchase),
+  `GET /api/purchases/:id/proof` (merchant proof: `recommendation` ship | wait | do_not_ship, `reasons`), health
+  `paypal_client_id` (public sandbox id for the JS SDK button), `POST /api/disputes/simulate` optional `amount`
+  (partial claim), purchase `refunded_value` (spend counts amount minus it), `POST /api/disputes/:id/payout` and
+  `/payout/check` (`packet.payout`), evidence `paid_out` / `payout_failed`, webhooks `PAYMENT.PAYOUTS-ITEM.*` /
+  `PAYMENT.PAYOUTSBATCH.*`, `GET /api/disputes/:id/packet.pdf` (also attached to provide-evidence).
 - 2026-11-11 (additive, not breaking) — lost holds: purchase field `hold_expires_at` (new column, migrated); webhook
   `PAYMENT.AUTHORIZATION.VOIDED`; the reconcile pass and `POST /api/purchases/:id/reconcile` also check held purchases
   (actions `held`, `hold_lost`); an expired or dropped hold is never captured: approval falls back to a fresh order.

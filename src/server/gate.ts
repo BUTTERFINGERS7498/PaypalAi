@@ -4,6 +4,7 @@
 //   * capture after the payer approved at PayPal                     -> 'payer'
 //   * a dispute response                                             -> only when a human submits it
 import { checkSelection } from './checker.ts';
+import { packetPdf } from './packet-pdf.ts';
 import type { Config } from './config.ts';
 import type { EvidenceLog } from './evidence.ts';
 import type { MandateService } from './mandates.ts';
@@ -11,7 +12,7 @@ import type { PaypalClient } from './paypal/types.ts';
 import { PaypalError } from './paypal/types.ts';
 import { mintTicket } from './paypal/ticket.ts';
 import type { Store } from './store.ts';
-import type { Approval, CatalogItem, Dispute, DisputePacket, DisputeRefund, EvidenceOption, EvidenceRecord, Mandate, Purchase } from './types.ts';
+import type { Approval, CatalogItem, Dispute, DisputePacket, DisputePayout, DisputeRefund, EvidenceOption, EvidenceRecord, Mandate, Purchase } from './types.ts';
 import { centsToMoney, formatMoney, invalidState, mandateInactive, notFound, nowIso, toCents } from './util.ts';
 
 export interface SelectionRequest {
@@ -42,6 +43,12 @@ const HOLD_DAYS = 29;
 export const HONOR_DAYS = 3;
 /** Authorization states that mean the money is no longer held. */
 const LOST_HOLD = new Set(['VOIDED', 'EXPIRED', 'DENIED']);
+
+/** Payout batch / item states that mean the money did not reach the buyer. */
+const PAYOUT_DONE_BAD = new Set(['DENIED', 'CANCELED', 'FAILED']);
+const PAYOUT_ITEM_BAD = new Set(['FAILED', 'RETURNED', 'BLOCKED', 'REFUNDED', 'REVERSED', 'DENIED']);
+/** b***@example.com: the evidence never stores the buyer's full email address. */
+const maskEmail = (e: string) => e.replace(/^(.)[^@]*(@.*)$/, '$1***$2');
 
 const errInfo = (err: unknown) => ({
   message: err instanceof Error ? err.message : String(err),
@@ -564,7 +571,7 @@ export class Gate {
     if (d.simulated || !d.paypal_dispute_id) return { simulated: true, action: packet.action, note: 'Simulated dispute: no PayPal call was made.' };
     const ticket = mintTicket(d.id, `human:${by}`);
     return packet.action === 'provide_evidence'
-      ? this.paypal.provideEvidence(ticket, d.paypal_dispute_id, { notes: packet.narrative })
+      ? this.paypal.provideEvidence(ticket, d.paypal_dispute_id, { notes: packet.narrative, pdf: this.packetPdf(d), filename: `sentry-evidence-${d.id}.pdf` })
       : this.paypal.acceptClaim(ticket, d.paypal_dispute_id, { note: packet.narrative });
   }
 
@@ -591,7 +598,8 @@ export class Gate {
     let result;
     try {
       result = await this.paypal.refundCapture(ticket, p.paypal_capture_id, {
-        amount: { currency_code: p.amount.currency_code, value: p.amount.value },
+        // Feature B4: refund what was disputed, which may be only part of the purchase.
+        amount: { currency_code: d.amount.currency_code, value: d.amount.value },
         note: `Refund: this purchase was outside the buyer's signed spending mandate (Sentry dispute ${d.id}).`,
         requestId: d.id,
       });
@@ -618,8 +626,90 @@ export class Gate {
     // COMPLETED for the full amount frees the budget; PENDING is recorded but still counts until PayPal completes it.
     return this.recordRefund(p, {
       paypal_refund_id: result.paypal_refund_id, status: result.status, source: 'refund_api', dispute_id: d.id, by,
-      final: result.status === 'COMPLETED', refundedTotal: p.amount.value,
+      amount: d.amount.value, totalRefunded: null,
     }, spentBefore);
+  }
+
+  /** Feature B3: the dispute's evidence packet as a one-page PDF (attached to provide-evidence, and downloadable). */
+  packetPdf(d: Dispute): Buffer {
+    const p = d.purchase_id ? this.store.getPurchase(d.purchase_id) : null;
+    const records = p ? this.evidence.forPurchase(p.id) : [];
+    const chain = this.evidence.verify();
+    return packetPdf(d, p, records, { valid: chain.valid, head_hash: chain.head_hash });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Payout (feature B5): pay the buyer back when a refund is not possible
+  // ---------------------------------------------------------------------------------------------
+  /**
+   * Last resort for a MANDATE_BREACH: send the purchase amount to the buyer with PayPal Payouts. Only when a refund
+   * of this purchase already failed for this dispute, or there is no capture to refund, so the buyer can never get
+   * both. A human triggers it (ticket for the dispute). Created PENDING: the budget is only freed when PayPal reports
+   * the payout SUCCESS (settlePayout).
+   */
+  async payoutForBreach(d: Dispute, packet: DisputePacket, by: string): Promise<DisputePayout> {
+    if (packet.verdict !== 'MANDATE_BREACH') throw invalidState('Only a MANDATE_BREACH verdict is paid back');
+    if (!d.simulated && d.paypal_dispute_id) throw invalidState('A real PayPal dispute is refunded by PayPal when the claim is accepted');
+    if (!d.purchase_id) throw invalidState('This dispute is not linked to a purchase');
+    const p = this.store.getPurchase(d.purchase_id);
+    if (!p) throw notFound(`Purchase ${d.purchase_id} not found`);
+    if (p.status === 'refunded') throw invalidState(`Purchase ${p.id} is already refunded`);
+    const trail = this.evidence.forPurchase(p.id);
+    const refundFailed = trail.some((e) => e.decision === 'refund_failed' && e.data.dispute_id === d.id);
+    if (p.paypal_capture_id && !refundFailed) throw invalidState('Try the refund first (Accept claim and refund): a payout is only for when a refund is not possible');
+    if (packet.payout && !PAYOUT_DONE_BAD.has(packet.payout.batch_status)) throw invalidState(`A payout for this dispute already exists (${packet.payout.batch_status})`);
+    const email = this.cfg.paypalBuyerEmail.trim();
+    if (!email) throw invalidState('No buyer email is configured (PAYPAL_BUYER_EMAIL), so there is nobody to pay');
+
+    const attempt = trail.filter((e) => e.decision === 'paid_out' && e.data.dispute_id === d.id && e.data.final !== true).length + 1;
+    const spent = this.store.spentMoney(p.mandate_id);
+    const common = {
+      mandate: this.snapshotFor(p), purchase_id: p.id, paypal_order_id: p.paypal_order_id, choice: { sku: p.sku, price: p.amount.value },
+      budget_before: spent, budget_after: spent, within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+    };
+    const ticket = mintTicket(d.id, `human:${by}`);
+    let res;
+    try {
+      res = await this.paypal.createPayout(ticket, {
+        amount: { currency_code: d.amount.currency_code, value: d.amount.value }, receiverEmail: email,
+        note: `Refund for ${p.item_name}: the purchase was outside your signed spending mandate (Sentry dispute ${d.id}).`,
+        senderBatchId: `mandate-payout-${d.id}-${attempt}`, senderItemId: d.id,
+      });
+    } catch (err) {
+      this.evidence.append({ ...common, decision: 'payout_failed', data: { dispute_id: d.id, attempt, receiver: maskEmail(email), authorised_by: `human:${by}`, error: errInfo(err) } });
+      throw err;
+    }
+    const now = nowIso();
+    this.evidence.append({ ...common, decision: 'paid_out', data: {
+      dispute_id: d.id, attempt, payout_batch_id: res.payout_batch_id, batch_status: res.batch_status, amount: d.amount,
+      receiver: maskEmail(email), final: false, authorised_by: `human:${by}`,
+    } });
+    return { payout_batch_id: res.payout_batch_id, batch_status: res.batch_status, item_status: null, amount: d.amount, receiver: maskEmail(email), error: null, created_at: now, checked_at: now };
+  }
+
+  /** Ask PayPal how a payout ended. SUCCESS -> purchase refunded (budget freed); DENIED/FAILED -> recorded. Records only changes. */
+  async settlePayout(d: Dispute, payout: DisputePayout): Promise<DisputePayout> {
+    const r = await this.paypal.getPayout(payout.payout_batch_id);
+    const next: DisputePayout = { ...payout, batch_status: r.batch_status, item_status: r.item_status, error: r.error, checked_at: nowIso() };
+    if (r.batch_status === payout.batch_status && r.item_status === payout.item_status) return next;
+    const p = d.purchase_id ? this.store.getPurchase(d.purchase_id) : null;
+    if (!p) return next;
+    const spentBefore = this.store.spentMoney(p.mandate_id);
+    const success = r.batch_status === 'SUCCESS' && (r.item_status === null || r.item_status === 'SUCCESS');
+    const failed = PAYOUT_DONE_BAD.has(r.batch_status) || (r.item_status !== null && PAYOUT_ITEM_BAD.has(r.item_status));
+    if (success && p.status !== 'refunded') {
+      const total = (p.refunded_value ? toCents(p.refunded_value) : 0) + toCents(payout.amount.value);
+      this.store.updatePurchase(p.id, { refunded_value: centsToMoney(total) });
+      if (total >= toCents(p.amount.value)) this.store.transitionPurchase(p.id, p.status, { status: 'refunded' });
+    }
+    const after = this.store.getPurchase(p.id)!;
+    this.evidence.append({
+      decision: failed ? 'payout_failed' : 'paid_out', mandate: this.snapshotFor(after), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+      choice: { sku: p.sku, price: p.amount.value }, budget_before: spentBefore, budget_after: this.store.spentMoney(p.mandate_id),
+      within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+      data: { dispute_id: d.id, payout_batch_id: payout.payout_batch_id, batch_status: r.batch_status, item_status: r.item_status, error: r.error, final: success, receiver: payout.receiver },
+    });
+    return next;
   }
 
   /**
@@ -636,24 +726,35 @@ export class Gate {
     const status = refund.status ?? 'UNKNOWN';
     const seen = this.evidence.forPurchase(p.id).some((e) => e.decision === 'refunded' && e.data.paypal_refund_id === refundId && e.data.paypal_status === status);
     if (seen) return p;
-    const total = refund.totalRefunded ?? refund.amount;
-    let full = false;
-    try { full = total !== null && toCents(total) >= toCents(p.amount.value); } catch { full = false; }
     this.recordRefund(p, {
       paypal_refund_id: refundId, status, source: 'accept_claim', dispute_id: p.dispute_id, by: null,
-      final: status === 'COMPLETED' && full, refundedTotal: total,
+      amount: refund.amount, totalRefunded: refund.totalRefunded,
     }, this.store.spentMoney(p.mandate_id));
     return this.store.getPurchase(p.id);
   }
 
+  /**
+   * Record one refund. Only a COMPLETED refund moves money: it raises the purchase's refunded total (PayPal's own total
+   * when the webhook gives it, else ours plus this refund). The purchase becomes `refunded` when that total covers the
+   * full amount; a partial refund (feature B4) lowers the counted spend by what was returned and keeps the status.
+   */
   private recordRefund(
     p: Purchase,
-    r: { paypal_refund_id: string; status: string; source: DisputeRefund['source']; dispute_id: string | null; by: string | null; final: boolean; refundedTotal: string | null },
+    r: { paypal_refund_id: string; status: string; source: DisputeRefund['source']; dispute_id: string | null; by: string | null; amount: string | null; totalRefunded: string | null },
     spentBefore: string,
   ): DisputeRefund {
-    // 'refunded' is not a spending status, so the month's budget is restored by the status change itself, and only
-    // for a final (completed, full) refund. transitionPurchase makes the change happen at most once.
-    const after = r.final ? (this.store.transitionPurchase(p.id, p.status, { status: 'refunded' }) ?? this.store.getPurchase(p.id)!) : p;
+    const prev = p.refunded_value ? toCents(p.refunded_value) : 0;
+    let total = prev;
+    if (r.status === 'COMPLETED') {
+      try {
+        total = r.totalRefunded !== null ? Math.max(prev, toCents(r.totalRefunded)) : r.amount !== null ? prev + toCents(r.amount) : prev;
+      } catch { total = prev; }
+    }
+    const final = r.status === 'COMPLETED' && total >= toCents(p.amount.value);
+    if (total !== prev) this.store.updatePurchase(p.id, { refunded_value: centsToMoney(total) });
+    // 'refunded' is not a spending status; transitionPurchase makes the change happen at most once.
+    const after = final ? (this.store.transitionPurchase(p.id, p.status, { status: 'refunded' }) ?? this.store.getPurchase(p.id)!) : this.store.getPurchase(p.id)!;
+    const amount = { currency_code: p.amount.currency_code, value: r.amount ?? centsToMoney(total - prev) };
     this.evidence.append({
       decision: 'refunded', mandate: this.snapshotFor(after), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
       choice: { sku: p.sku, price: p.amount.value },
@@ -661,10 +762,10 @@ export class Gate {
       within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
       data: {
         paypal_refund_id: r.paypal_refund_id, paypal_status: r.status, paypal_capture_id: p.paypal_capture_id,
-        amount: p.amount, refunded_total: r.refundedTotal, final: r.final,
+        amount, refunded_total: centsToMoney(total), purchase_amount: p.amount, final, partial: r.status === 'COMPLETED' && !final,
         source: r.source, dispute_id: r.dispute_id, ...(r.by ? { authorised_by: `human:${r.by}` } : {}),
       },
     });
-    return { paypal_refund_id: r.paypal_refund_id, status: r.status, amount: p.amount, source: r.source, refunded_at: nowIso() };
+    return { paypal_refund_id: r.paypal_refund_id, status: r.status, amount, source: r.source, refunded_at: nowIso() };
   }
 }

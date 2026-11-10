@@ -68,6 +68,8 @@ export interface Purchase {
   paypal_authorization_id: string | null;
   /** When PayPal will drop the hold (authorizations last 29 days; the first 3 are the honor period). */
   hold_expires_at: string | null;
+  /** Total refunded so far by completed refunds (feature B4: partial refunds). null = nothing refunded. */
+  refunded_value: string | null;
   approval_id: string | null;
   dispute_id: string | null;
   created_at: string;
@@ -90,7 +92,7 @@ export interface Approval {
 export type EvidenceDecision =
   | 'selected' | 'needs_approval' | 'blocked' | 'no_match' | 'approved' | 'rejected'
   | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked' | 'clarify' | 'refunded' | 'refund_failed'
-  | 'authorized' | 'voided';
+  | 'authorized' | 'voided' | 'paid_out' | 'payout_failed';
 
 export interface EvidenceOption {
   sku: string;
@@ -135,6 +137,22 @@ export interface DisputePacket {
   paypal_response: Record<string, unknown> | null;
   /** Set when accepting the claim refunded the buyer at PayPal (feature B1). */
   refund?: DisputeRefund | null;
+  /** Set when the buyer was paid back by a PayPal payout because a refund was not possible (feature B5). */
+  payout?: DisputePayout | null;
+}
+
+export interface DisputePayout {
+  payout_batch_id: string;
+  /** PENDING / PROCESSING / SUCCESS / DENIED ... (PayPal batch status) */
+  batch_status: string;
+  /** SUCCESS / PENDING / UNCLAIMED / FAILED ... (PayPal item status), when known */
+  item_status: string | null;
+  amount: Money;
+  /** masked, e.g. b***@example.com */
+  receiver: string;
+  error: string | null;
+  created_at: string;
+  checked_at: string;
 }
 
 export interface DisputeRefund {

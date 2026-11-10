@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   paypal_capture_id TEXT,
   paypal_authorization_id TEXT,
   hold_expires_at TEXT,
+  refunded_value TEXT,
   approval_id TEXT,
   dispute_id TEXT,
   created_at TEXT,

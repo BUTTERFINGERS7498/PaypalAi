@@ -62,6 +62,9 @@ export function createHttpApi(): Api {
     listPurchases: async () =>
       (await req<{ purchases: never[] }>("GET", "/api/purchases")).purchases,
     purchaseEvidence: (id) => req("GET", `/api/purchases/${id}/evidence`),
+    purchaseWebhooks: (id) => req("GET", `/api/purchases/${id}/webhooks`),
+    reconcilePurchase: (id) => req("POST", `/api/purchases/${id}/reconcile`),
+    purchaseProof: (id) => req("GET", `/api/purchases/${id}/proof`),
     verifyChain: () => req("GET", "/api/evidence/verify"),
     listApprovals: async () =>
       (await req<{ approvals: never[] }>("GET", "/api/approvals?status=pending")).approvals,
@@ -73,6 +76,8 @@ export function createHttpApi(): Api {
     simulateDispute: (b) => req("POST", "/api/disputes/simulate", b),
     assembleDispute: (id) => req("POST", `/api/disputes/${id}/assemble`),
     submitDispute: (id, b) => req("POST", `/api/disputes/${id}/submit`, b),
+    payoutDispute: (id, b) => req("POST", `/api/disputes/${id}/payout`, b),
+    checkPayout: (id) => req("POST", `/api/disputes/${id}/payout/check`),
     subscribe(handler) {
       if (typeof EventSource === "undefined") return () => {};
       const es = new EventSource(BASE + "/api/stream");

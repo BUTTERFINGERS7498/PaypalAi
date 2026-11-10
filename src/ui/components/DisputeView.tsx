@@ -39,6 +39,12 @@ function DisputeCard({ d }: { d: Dispute }) {
         <button className={`sx-btn ${breach && !submitted ? "danger" : ""}`} disabled={act.busy || !pk || submitted} onClick={() => act.run(() => api.submitDispute(d.id, { decided_by: operator }))}>
           {breach ? (d.simulated ? "Accept claim and refund" : "Accept claim (PayPal refunds)") : "Submit response"}
         </button>
+        {breach && d.simulated && pk && !pk.refund && !submitted && (
+          <button className="sx-btn" disabled={act.busy} title="Only when the refund failed: sends the amount to the buyer with PayPal Payouts"
+            onClick={() => act.run(() => api.payoutDispute(d.id, { decided_by: operator }))}>
+            Pay back by payout (if the refund failed)
+          </button>
+        )}
         {d.purchase_id && <button className="sx-btn" onClick={() => go("evidence", d.purchase_id!)}>View evidence trail</button>}
       </div>
       {act.error && <Notice kind="error">{act.error}</Notice>}
@@ -72,6 +78,27 @@ function DisputeCard({ d }: { d: Dispute }) {
               </div>
             </div>
           )}
+          {pk.payout && (() => {
+            const po = pk.payout;
+            const ok = po.batch_status === "SUCCESS";
+            const bad = ["DENIED", "CANCELED", "FAILED"].includes(po.batch_status) || ["FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED", "DENIED"].includes(po.item_status ?? "");
+            return (
+              <div className={`sx-verdict ${bad ? "bad" : "ok"}`} style={{ textAlign: "left" }} role="status">
+                <div className="row wrap" style={{ gap: 14 }}>
+                  <Stamp tone={ok ? "info" : bad ? "bad" : "warn"} large pop tilt={-3}>{ok ? "Paid out" : bad ? "Payout failed" : "Payout pending"}</Stamp>
+                  <div>
+                    <strong>{fmtMoney(po.amount)} {ok ? "paid back to" : bad ? "did not reach" : "on its way to"} {po.receiver} by PayPal payout</strong>
+                    <div className="small muted">
+                      batch <span className="mono">{po.payout_batch_id}</span> · {po.batch_status}{po.item_status ? ` / ${po.item_status}` : ""}{po.error ? ` · ${po.error}` : ""} · checked {fmtTime(po.checked_at)}
+                    </div>
+                    {!ok && !bad && (
+                      <button className="sx-btn sm" style={{ marginTop: 6 }} disabled={act.busy} onClick={() => act.run(() => api.checkPayout(d.id))}>Check status at PayPal</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <p><span className="lbl">Summary</span> {pk.summary}</p>
           <h4>Narrative</h4>
           <p className="sx-letter">{pk.narrative}</p>
@@ -79,6 +106,14 @@ function DisputeCard({ d }: { d: Dispute }) {
             <span className="lbl">Evidence records</span>{" "}
             {pk.evidence_record_ids.map((id) => <span key={id} className="mono tag">{short(id, 14)}</span>)}
           </p>
+          {api.kind === "api" && (
+            <p className="small">
+              <a className="sx-btn sm" href={`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/disputes/${d.id}/packet.pdf`} target="_blank" rel="noopener noreferrer">
+                Evidence packet (PDF)
+              </a>{" "}
+              <span className="muted">the one-page document attached to PayPal&apos;s provide-evidence for a real dispute</span>
+            </p>
+          )}
           <p className="small muted">Assembled {fmtTime(pk.assembled_at)}{pk.submitted_at ? ` · submitted ${fmtTime(pk.submitted_at)}` : " · not yet submitted"}</p>
           {pk.paypal_response != null && (
             <p className="small">
@@ -98,6 +133,7 @@ export default function DisputeView() {
   const { api, disputes, purchases, refresh } = useStore();
   const eligible = purchases.filter((p) => p.status === "completed");
   const [pid, setPid] = useState("");
+  const [part, setPart] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const sync = useAction();
   const sim = useAction();
@@ -124,8 +160,10 @@ export default function DisputeView() {
               {eligible.length === 0 && <option value="">No completed purchases</option>}
               {eligible.map((p) => <option key={p.id} value={p.id}>{p.item_name} · {fmtMoney(p.amount)} · {p.id}{p.within_mandate ? "" : " (outside mandate)"}</option>)}
             </select>
+            <label htmlFor="sim-amount">Amount disputed (optional: leave empty for the full amount, or claim part of it)</label>
+            <input id="sim-amount" inputMode="decimal" value={part} onChange={(e) => setPart(e.target.value)} placeholder="e.g. 100.00" style={{ maxWidth: 200 }} />
           </div>
-          <button className="sx-btn" disabled={sim.busy || !chosen} onClick={() => sim.run(() => api.simulateDispute({ purchase_id: chosen }))}>
+          <button className="sx-btn" disabled={sim.busy || !chosen} onClick={() => sim.run(() => api.simulateDispute({ purchase_id: chosen, ...(part.trim() ? { amount: part.trim() } : {}) }))}>
             Create simulated dispute
           </button>
           {sim.error && <Notice kind="error">{sim.error}</Notice>}

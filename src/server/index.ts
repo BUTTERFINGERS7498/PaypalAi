@@ -130,6 +130,8 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       return sendJson(res, 200, {
         ok: true, paypal_env: cfg.paypalEnv, paypal_mode: cfg.paypalMode, agent_mode: cfg.agentMode,
         checkout_mode: cfg.checkoutMode, webhook_verify: cfg.webhookVerify, version: VERSION,
+        // Feature B6: the sandbox client id is public by design (the PayPal JS SDK needs it in the browser); the secret never leaves the server.
+        paypal_client_id: cfg.paypalMode === 'sandbox' && cfg.paypalClientId ? cfg.paypalClientId : null,
         // Only in engine mode: whether the semantic model is loaded ('embeddings') or the keyword fallback is in use.
         ...(s.engine ? { engine: s.engine.status() } : {}),
       });
@@ -200,6 +202,37 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       return sendJson(res, 200, { records: evidence.forPurchase(m[1]), chain_valid: evidence.verify().valid });
     }
 
+    // Feature B8: the proof a merchant checks before shipping an agent's order. Read-only.
+    if (method === 'GET' && (m = path.match(/^\/api\/purchases\/([\w-]+)\/proof$/))) {
+      const p = store.getPurchase(m[1]);
+      if (!p) throw notFound(`Purchase ${m[1]} not found`);
+      const signature = mandates.verify(p.mandate_id, p.mandate_version);
+      const records = evidence.forPurchase(p.id);
+      const chain = evidence.verify();
+      const reasons: string[] = [];
+      if (!signature.valid) reasons.push(`the mandate signature does not verify (${signature.reason ?? 'invalid'})`);
+      if (!chain.valid) reasons.push(`the evidence chain is broken at record ${chain.broken_at_seq}`);
+      if (!records.length) reasons.push('there is no evidence for this purchase');
+      if (!p.within_mandate) reasons.push(`the purchase was outside the mandate (${p.breaches.join(', ').replace(/_/g, ' ') || 'breach'})`);
+      if (p.status === 'refunded') reasons.push('the payment was refunded');
+      const paid = p.status === 'completed' && !!p.paypal_capture_id;
+      const recommendation = reasons.length ? 'do_not_ship' : paid ? 'ship' : 'wait';
+      if (!reasons.length && !paid) reasons.push(`the payment is not captured yet (status ${p.status})`);
+      if (!reasons.length) reasons.push('signed mandate verified, inside the mandate, evidence chain intact, payment captured');
+      return sendJson(res, 200, {
+        purchase: p, recommendation, reasons,
+        mandate: { id: p.mandate_id, version: p.mandate_version, signature },
+        chain: { valid: chain.valid, head_hash: chain.head_hash, broken_at_seq: chain.broken_at_seq },
+        evidence: { count: records.length, first: records[0]?.record_id ?? null, last: records.at(-1)?.record_id ?? null, last_hash: records.at(-1)?.hash ?? null },
+      });
+    }
+
+    // Feature B7: the PayPal webhooks that arrived for this purchase, and whether their signatures were verified.
+    if (method === 'GET' && (m = path.match(/^\/api\/purchases\/([\w-]+)\/webhooks$/))) {
+      if (!store.getPurchase(m[1])) throw notFound(`Purchase ${m[1]} not found`);
+      return sendJson(res, 200, { events: store.listWebhooksForPurchase(m[1]), webhook_verify: cfg.webhookVerify });
+    }
+
     // Safety net: ask PayPal whether the buyer approved this order and, if so, capture it now (no webhook needed).
     if (method === 'POST' && (m = path.match(/^\/api\/purchases\/([\w-]+)\/reconcile$/))) {
       requireAuth(req); // can trigger a PayPal capture of a buyer-approved order
@@ -243,7 +276,7 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       requireAuth(req);
       const b = await readJson(req);
       if (typeof b.purchase_id !== 'string' || !b.purchase_id) throw badRequest('purchase_id is required');
-      return sendJson(res, 201, disputes.simulate(b.purchase_id, typeof b.reason === 'string' ? b.reason : undefined));
+      return sendJson(res, 201, disputes.simulate(b.purchase_id, typeof b.reason === 'string' ? b.reason : undefined, b.amount === undefined ? undefined : String(b.amount)));
     }
     if (method === 'GET' && (m = path.match(/^\/api\/disputes\/([\w-]+)$/))) {
       const d = store.getDispute(m[1]);
@@ -255,6 +288,25 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       requireAuth(req);
       const { by } = decided(await readJson(req));
       return sendJson(res, 200, await disputes.submit(m[1], by));
+    }
+    // Feature B3: the evidence packet as the PDF PayPal would receive with provide-evidence.
+    if (method === 'GET' && (m = path.match(/^\/api\/disputes\/([\w-]+)\/packet\.pdf$/))) {
+      const d = store.getDispute(m[1]);
+      if (!d) throw notFound(`Dispute ${m[1]} not found`);
+      const pdf = gate.packetPdf(d);
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': pdf.length, 'content-disposition': `inline; filename="sentry-evidence-${d.id}.pdf"`, 'cache-control': 'no-store' });
+      res.end(pdf);
+      return;
+    }
+    // Feature B5: pay the buyer back by PayPal payout when a refund was not possible; then check how it ended.
+    if (method === 'POST' && (m = path.match(/^\/api\/disputes\/([\w-]+)\/payout$/))) {
+      requireAuth(req); // sends money
+      const { by } = decided(await readJson(req));
+      return sendJson(res, 200, await disputes.payout(m[1], by));
+    }
+    if (method === 'POST' && (m = path.match(/^\/api\/disputes\/([\w-]+)\/payout\/check$/))) {
+      enforceLimit(reconcileLimiter, req, 'payout-check'); // read-only at PayPal, but rate limited
+      return sendJson(res, 200, await disputes.checkPayout(m[1]));
     }
 
     // ----- webhooks + stream -----

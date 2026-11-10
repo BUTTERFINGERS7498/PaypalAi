@@ -43,6 +43,8 @@ export const DECISION_LABEL: Record<string, string> = {
   refund_failed: "Refund failed at PayPal",
   authorized: "Money held at PayPal",
   voided: "Hold released at PayPal",
+  paid_out: "Buyer paid back by PayPal payout",
+  payout_failed: "Payout did not reach the buyer",
 };
 
 export const REASON_LABEL: Record<string, string> = {

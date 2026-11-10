@@ -243,7 +243,8 @@ const PRODUCT: { tab: TabId; n: string; title: string; text: string }[] = [
   { tab: "mandates", n: "01", title: "Mandates", text: "Write the rules: how much, which kinds of things, when to ask you first. Edit them and a new signed version appears." },
   { tab: "ledger", n: "02", title: "Purchase ledger", text: "Tell the agent what to buy. Every choice lands here as a receipt with its mandate check, and large ones wait for your approval." },
   { tab: "evidence", n: "03", title: "Evidence trail", text: "Open any purchase to see what the agent saw, what it chose and why, plus a one-click chain check." },
-  { tab: "disputes", n: "04", title: "Disputes", text: "Simulate a dispute and get a response built from the evidence, with the verdict computed by code." },
+  { tab: "disputes", n: "04", title: "Disputes", text: "Simulate a dispute and get a response built from the evidence, with the verdict computed by code. A breach is refunded at PayPal." },
+  { tab: "merchant", n: "05", title: "Merchant view", text: "The seller's side: check the signed mandate, the evidence chain and the payment before shipping an agent's order." },
 ];
 
 export default function Landing({ onOpen }: { onOpen: (tab?: TabId) => void }) {
@@ -336,7 +337,7 @@ export default function Landing({ onOpen }: { onOpen: (tab?: TabId) => void }) {
       <section id="product" className="lx-sec">
         <div className="lx-wrap">
           <p className="sx-kicker">What we built</p>
-          <h2 className="lx-h2">A working console, five views</h2>
+          <h2 className="lx-h2">A working console, six views</h2>
           <p className="lx-sub">Real server, real PayPal sandbox orders, live updates. Click a view to jump straight in.</p>
           <div className="lx-prod">
             <div className="lx-cards">

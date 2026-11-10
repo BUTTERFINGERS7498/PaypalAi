@@ -6,7 +6,7 @@ import type { Gate } from './gate.ts';
 import type { PaypalClient } from './paypal/types.ts';
 import type { Store } from './store.ts';
 import type { Dispute, DisputePacket, DisputeRefund, EvidenceRecord, Purchase } from './types.ts';
-import { badRequest, formatMoney, HttpError, invalidState, notFound, nowIso, upstream } from './util.ts';
+import { badRequest, centsToMoney, formatMoney, HttpError, invalidState, notFound, nowIso, toCents, upstream } from './util.ts';
 
 export class DisputeService {
   private store: Store;
@@ -43,11 +43,19 @@ export class DisputeService {
   }
 
   /** Fallback when the Disputes API is unavailable. Clearly labelled `simulated` everywhere. */
-  simulate(purchaseId: string, reason?: string): Dispute {
+  simulate(purchaseId: string, reason?: string, amount?: string): Dispute {
     const p = this.store.getPurchase(purchaseId);
     if (!p) throw notFound(`Purchase ${purchaseId} not found`);
     if (p.status !== 'completed') throw invalidState(`Only a completed purchase can be disputed (this one is ${p.status})`);
-    return this.open({ paypal_dispute_id: null, simulated: true, purchase: p, reason: reason || 'MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED', amount: p.amount });
+    // Feature B4: a dispute may claim only part of the purchase (one item of several, a damaged part...).
+    let claimed = p.amount;
+    if (amount !== undefined && amount !== '') {
+      let c: number;
+      try { c = toCents(amount); } catch { throw badRequest('amount must be a positive amount such as 12.50'); }
+      if (c <= 0 || c > toCents(p.amount.value)) throw badRequest(`amount must be more than 0 and at most ${p.amount.value}`);
+      claimed = { currency_code: p.amount.currency_code, value: centsToMoney(c) };
+    }
+    return this.open({ paypal_dispute_id: null, simulated: true, purchase: p, reason: reason || 'MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED', amount: claimed });
   }
 
   /** Used by the webhook handler and sync: create a Dispute and mark the purchase disputed. */
@@ -126,6 +134,48 @@ export class DisputeService {
     }
     const packet: DisputePacket = { ...d.packet, submitted_at: nowIso(), paypal_response: response, refund };
     return this.store.updateDispute(id, { packet, status: 'submitted' });
+  }
+
+  // ---------- payout (feature B5) ----------
+  /** Pay the buyer back with a PayPal payout when the refund was not possible. Marks the dispute submitted. */
+  async payout(id: string, by: string): Promise<Dispute> {
+    const d = this.store.getDispute(id);
+    if (!d) throw notFound(`Dispute ${id} not found`);
+    if (!d.packet) throw invalidState('Assemble the evidence packet first');
+    if (d.status === 'resolved') throw invalidState(`Dispute ${id} is resolved`);
+    let payout;
+    try {
+      payout = await this.gate.payoutForBreach(d, d.packet, by);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      throw upstream(`PayPal refused the payout: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const packet: DisputePacket = {
+      ...d.packet, payout, submitted_at: nowIso(),
+      paypal_response: d.packet.paypal_response ?? { simulated: true, action: 'accept_claim', note: 'Simulated dispute: no PayPal dispute call was made.' },
+    };
+    return this.store.updateDispute(id, { packet, status: 'submitted' });
+  }
+
+  /** Ask PayPal how the payout ended. A payout that did not reach the buyer reopens the dispute so it can be retried. */
+  async checkPayout(id: string): Promise<Dispute> {
+    const d = this.store.getDispute(id);
+    if (!d) throw notFound(`Dispute ${id} not found`);
+    if (!d.packet?.payout) throw invalidState(`Dispute ${id} has no payout`);
+    let payout;
+    try {
+      payout = await this.gate.settlePayout(d, d.packet.payout);
+    } catch (err) {
+      throw upstream(`Could not read the payout from PayPal: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const failed = ['DENIED', 'CANCELED', 'FAILED'].includes(payout.batch_status) || ['FAILED', 'RETURNED', 'BLOCKED', 'REFUNDED', 'REVERSED', 'DENIED'].includes(payout.item_status ?? '');
+    const packet: DisputePacket = { ...d.packet, payout, ...(failed ? { submitted_at: null } : {}) };
+    return this.store.updateDispute(id, { packet, ...(failed ? { status: 'evidence_assembled' as const } : {}) });
+  }
+
+  /** For the payout webhooks: the dispute that owns this payout batch. */
+  byPayoutBatch(batchId: string): Dispute | null {
+    return this.store.listDisputes().find((x) => x.packet?.payout?.payout_batch_id === batchId) ?? null;
   }
 
   // ---------- narrative ----------

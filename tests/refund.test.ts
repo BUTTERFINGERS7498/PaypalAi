@@ -7,8 +7,8 @@ import type { MockPaypalClient } from '../src/server/paypal/mock.ts';
 import { mintTicket } from '../src/server/paypal/ticket.ts';
 import { HttpError } from '../src/server/util.ts';
 
-function boot() {
-  const cfg = loadConfig({ PAYPAL_ENV: 'sandbox', PAYPAL_MODE: 'mock', AGENT_MODE: 'mock', WEBHOOK_VERIFY: 'off', DATABASE_PATH: ':memory:' });
+function boot(env: Record<string, string> = {}) {
+  const cfg = loadConfig({ PAYPAL_ENV: 'sandbox', PAYPAL_MODE: 'mock', AGENT_MODE: 'mock', WEBHOOK_VERIFY: 'off', DATABASE_PATH: ':memory:', PAYPAL_BUYER_EMAIL: 'buyer@example.com', ...env });
   const s = createServices(cfg);
   const ins = s.db.prepare("INSERT INTO catalog_items (sku,name,category,price_value,currency_code,merchant) VALUES (?, ?, ?, ?, 'USD', 'Demo')");
   for (const [sku, name, cat, price] of [['GRO-OAT-01', 'Rolled oats 1kg', 'groceries', '4.50'], ['ELE-GAME-01', 'Games console', 'electronics', '299.00']]) ins.run(sku, name, cat, price);
@@ -128,7 +128,7 @@ test('a real PayPal dispute is not refunded by Sentry (PayPal refunds on accept-
   assert.equal(refunds[0].data.paypal_refund_id, 'REF-PP-1');
 });
 
-test('a partial refund from PayPal is recorded but the purchase still counts against the cap', async () => {
+test('a partial refund from PayPal lowers the counted spend by what was returned, and keeps the purchase status', async () => {
   const b = boot();
   const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
   const ev = (id: string, value: string, total: string) => ({
@@ -141,7 +141,8 @@ test('a partial refund from PayPal is recorded but the purchase still counts aga
   });
   await b.s.webhooks.handle({}, ev('WH-P-1', '100.00', '100.00'));
   assert.equal(b.s.store.getPurchase(p.id)!.status, 'completed', 'a partial refund does not free the whole amount');
-  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00');
+  assert.equal(b.s.store.getPurchase(p.id)!.refunded_value, '100.00');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '199.00', 'only what the buyer still paid counts');
   const partial = b.s.evidence.forPurchase(p.id).find((e) => e.decision === 'refunded')!;
   assert.equal(partial.data.final, false);
   // The rest arrives: now the total covers the purchase, so it is refunded and the budget is restored.
@@ -180,4 +181,110 @@ test('a refund PayPal reports as FAILED leaves the dispute open and the budget u
   assert.equal(b.s.store.getDispute(d.id)!.status, 'evidence_assembled');
   assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00');
   assert.ok(b.s.evidence.forPurchase(p.id).some((e) => e.decision === 'refund_failed' && e.data.paypal_status === 'FAILED'));
+});
+
+// ---------- feature B5: payout when a refund is not possible ----------
+
+async function breachWithFailedRefund(b: ReturnType<typeof boot>) {
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  b.s.store.updatePurchase(p.id, { paypal_capture_id: 'CAP-TEST-NOREFUND' });
+  const d = b.s.disputes.simulate(p.id);
+  await b.s.disputes.assemble(d.id);
+  await assert.rejects(() => b.s.disputes.submit(d.id, 'qa'));
+  return { p, d };
+}
+
+test('a payout is refused while a refund is still possible', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  const d = b.s.disputes.simulate(p.id);
+  await b.s.disputes.assemble(d.id);
+  await assert.rejects(() => b.s.disputes.payout(d.id, 'qa'), /Try the refund first/);
+  assert.equal(b.paypal.calls.filter((c) => c.op === 'payout').length, 0);
+});
+
+test('after a failed refund, the buyer is paid back by payout; the budget is freed only when PayPal reports SUCCESS', async () => {
+  const b = boot();
+  const { p, d } = await breachWithFailedRefund(b);
+  const sent = await b.s.disputes.payout(d.id, 'qa');
+  assert.equal(sent.status, 'submitted');
+  assert.equal(sent.packet!.payout!.batch_status, 'PENDING');
+  assert.equal(sent.packet!.payout!.receiver, 'b***@example.com', 'the evidence never holds the full email');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00', 'still counts while pending');
+  const call = b.paypal.calls.find((c) => c.op === 'payout')!;
+  assert.equal(call.subject_id, d.id);
+
+  const checked = await b.s.disputes.checkPayout(d.id);
+  assert.equal(checked.packet!.payout!.batch_status, 'SUCCESS');
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '0.00');
+  const final = b.s.evidence.forPurchase(p.id).filter((e) => e.decision === 'paid_out');
+  assert.deepEqual(final.map((e) => e.data.final), [false, true]);
+  assert.ok(!JSON.stringify(final).includes('buyer@example.com'));
+  // A second payout for the same dispute is refused.
+  await assert.rejects(() => b.s.disputes.payout(d.id, 'qa'), /already refunded/);
+  assert.equal(b.s.evidence.verify().valid, true);
+});
+
+test('a payout PayPal denies (payment to self) reopens the dispute, and a retry uses a new batch id', async () => {
+  const b = boot({ PAYPAL_BUYER_EMAIL: 'self@example.com' });
+  const { p, d } = await breachWithFailedRefund(b);
+  await b.s.disputes.payout(d.id, 'qa');
+  const checked = await b.s.disputes.checkPayout(d.id);
+  assert.equal(checked.status, 'evidence_assembled', 'reopened');
+  assert.equal(checked.packet!.payout!.error, 'SELF_PAY_NOT_ALLOWED');
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'disputed');
+  assert.ok(b.s.evidence.forPurchase(p.id).some((e) => e.decision === 'payout_failed'));
+  await b.s.disputes.payout(d.id, 'qa');
+  const ids = b.paypal.calls.filter((c) => c.op === 'payout').map((c) => (c.detail as { senderBatchId: string }).senderBatchId);
+  assert.deepEqual(ids, [`mandate-payout-${d.id}-1`, `mandate-payout-${d.id}-2`]);
+});
+
+test('without a buyer email there is nobody to pay, so no payout is sent', async () => {
+  const b = boot({ PAYPAL_BUYER_EMAIL: '' });
+  const { d } = await breachWithFailedRefund(b);
+  await assert.rejects(() => b.s.disputes.payout(d.id, 'qa'), /No buyer email/);
+});
+
+test('a payout webhook makes Sentry re-read the payout from PayPal', async () => {
+  const b = boot();
+  const { p, d } = await breachWithFailedRefund(b);
+  const sent = await b.s.disputes.payout(d.id, 'qa');
+  await b.s.webhooks.handle({}, { id: 'WH-PO-1', event_type: 'PAYMENT.PAYOUTS-ITEM.SUCCEEDED', resource_type: 'payouts_item',
+    resource: { payout_batch_id: sent.packet!.payout!.payout_batch_id, transaction_status: 'SUCCESS' } });
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
+});
+
+// ---------- feature B4: a dispute for part of a purchase ----------
+
+test('a dispute may claim part of a purchase; only that part is refunded and only it leaves the budget', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  assert.throws(() => b.s.disputes.simulate(p.id, undefined, '300.00'), /at most 299.00/);
+  assert.throws(() => b.s.disputes.simulate(p.id, undefined, '0'), /more than 0/);
+  const d = b.s.disputes.simulate(p.id, 'ITEM_DAMAGED', '100.00');
+  assert.deepEqual(d.amount, { currency_code: 'USD', value: '100.00' });
+  await b.s.disputes.assemble(d.id);
+  const submitted = await b.s.disputes.submit(d.id, 'qa');
+  assert.deepEqual(submitted.packet!.refund!.amount, { currency_code: 'USD', value: '100.00' });
+  const call = b.paypal.calls.find((c) => c.op === 'refund')!;
+  assert.deepEqual((call.detail as { amount: unknown }).amount, { currency_code: 'USD', value: '100.00' });
+  const after = b.s.store.getPurchase(p.id)!;
+  assert.equal(after.status, 'disputed', 'still partly paid, so not "refunded"');
+  assert.equal(after.refunded_value, '100.00');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '199.00');
+  const ev = b.s.evidence.forPurchase(p.id).find((e) => e.decision === 'refunded')!;
+  assert.equal(ev.data.partial, true);
+  assert.equal(ev.data.final, false);
+  assert.equal(b.s.evidence.verify().valid, true);
+});
+
+test('a full-amount dispute still refunds everything and marks the purchase refunded', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  const d = b.s.disputes.simulate(p.id, undefined, '299.00');
+  await b.s.disputes.assemble(d.id);
+  await b.s.disputes.submit(d.id, 'qa');
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '0.00');
 });

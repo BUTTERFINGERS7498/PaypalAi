@@ -19,6 +19,14 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **Group B finished (2026-11-11, uncommitted):** B7 timeline (`store.listWebhooksForPurchase`, route, EvidenceView strip), B6
+  PayPal JS SDK button (`PayPalButton.tsx`, health `paypal_client_id`, UI `reconcilePurchase`), B4 partial disputes
+  (`simulate(..., amount)`, purchase `refunded_value` column + spend = amount - refunded, `recordRefund` rewritten), B5 payouts
+  (`createPayout`/`getPayout`, `Gate.payoutForBreach`/`settlePayout`, `DisputeService.payout`/`checkPayout`, routes, payout
+  webhooks; real sandbox payout DENIED SELF_PAY_NOT_ALLOWED because PAYPAL_BUYER_EMAIL is the business account), B3 packet PDF
+  (`src/server/packet-pdf.ts`, attached to provide-evidence, `GET /api/disputes/:id/packet.pdf`; real call unverified: no
+  real dispute), B8 Merchant view (`MerchantView.tsx`, tab 05, `GET /api/purchases/:id/proof`). Real sandbox: partial refund
+  8HD71882FW4435312 on capture 40B37925D42158549 -> PARTIALLY_REFUNDED. `npm test` 83 pass, e2e 4 pass 1 skipped.
 - **B2 gaps closed (2026-11-11, uncommitted):** `Gate.onHoldLost` (shared rule: evidence `voided` with reason/source, clear
   `paypal_authorization_id` + new column `hold_expires_at`, request keeps waiting, approve then makes a fresh order),
   `onAuthorizationVoided` (webhook `PAYMENT.AUTHORIZATION.VOIDED`), `checkHold` + `reconcileAll` (holds too) + reconcile route,

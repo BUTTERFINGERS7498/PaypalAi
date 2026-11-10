@@ -25,7 +25,7 @@ function rowToPurchase(r: Row): Purchase {
     category: r.category, amount: { currency_code: r.currency_code, value: r.amount_value }, status: r.status,
     within_mandate: !!r.within_mandate, breaches: parse<string[]>(r.breaches, []), demo_rogue: !!r.demo_rogue,
     request_id: r.request_id ?? null, paypal_order_id: r.paypal_order_id ?? null, approve_url: r.approve_url ?? null,
-    paypal_capture_id: r.paypal_capture_id ?? null, paypal_authorization_id: r.paypal_authorization_id ?? null, hold_expires_at: r.hold_expires_at ?? null, approval_id: r.approval_id ?? null, dispute_id: r.dispute_id ?? null,
+    paypal_capture_id: r.paypal_capture_id ?? null, paypal_authorization_id: r.paypal_authorization_id ?? null, hold_expires_at: r.hold_expires_at ?? null, refunded_value: r.refunded_value ?? null, approval_id: r.approval_id ?? null, dispute_id: r.dispute_id ?? null,
     created_at: r.created_at, updated_at: r.updated_at, completed_at: r.completed_at ?? null,
   };
 }
@@ -73,6 +73,8 @@ export type PurchasePatch = Partial<{
   status: PurchaseStatus; paypal_order_id: string; approve_url: string; paypal_capture_id: string;
   /** null clears the hold (it was voided, expired or denied at PayPal). */
   paypal_authorization_id: string | null; hold_expires_at: string | null;
+  /** total refunded so far (completed refunds only); the spend counts amount minus this */
+  refunded_value: string;
   approval_id: string; dispute_id: string; completed_at: string; within_mandate: boolean; breaches: string[];
 }>;
 
@@ -164,9 +166,10 @@ export class Store {
   /** Spend that counts against the monthly cap (contract section 3, Mandate.budget). */
   spentCents(mandateId: string, period: string = monthKey()): number {
     const ph = SPENDING.map(() => '?').join(', ');
-    const rows = this.db.prepare(`SELECT amount_value FROM purchases WHERE mandate_id = ? AND substr(created_at, 1, 7) = ? AND status IN (${ph})`)
+    const rows = this.db.prepare(`SELECT amount_value, refunded_value FROM purchases WHERE mandate_id = ? AND substr(created_at, 1, 7) = ? AND status IN (${ph})`)
       .all(mandateId, period, ...SPENDING) as Row[];
-    return rows.reduce((sum, r) => sum + toCents(r.amount_value), 0);
+    // A partly refunded purchase (feature B4) only counts what the buyer still paid.
+    return rows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount_value) - (r.refunded_value ? toCents(r.refunded_value) : 0)), 0);
   }
 
   spentMoney(mandateId: string, period?: string): string {
@@ -254,6 +257,11 @@ export class Store {
   markWebhook(id: string, patch: { processed: boolean; purchase_id?: string | null; error?: string | null }): void {
     this.db.prepare('UPDATE webhook_events SET processed = ?, purchase_id = ?, error = ? WHERE id = ?')
       .run(patch.processed ? 1 : 0, patch.purchase_id ?? null, patch.error ?? null, id);
+  }
+
+  /** The PayPal events that arrived for one purchase, oldest first (feature B7). */
+  listWebhooksForPurchase(purchaseId: string): WebhookEventRecord[] {
+    return (this.db.prepare('SELECT * FROM webhook_events WHERE purchase_id = ? ORDER BY received_at ASC').all(purchaseId) as Row[]).map(rowToWebhook);
   }
 
   listWebhooks(limit = 50): WebhookEventRecord[] {

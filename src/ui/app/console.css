@@ -289,3 +289,5 @@
 .sx .lbl-bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--green); vertical-align: middle; margin-right: 6px; }
 .sx .lbl-bar.dim { background: #b9ad95; }
 .sx-trace { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }
+
+.sx-ppbtn { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line-2); }

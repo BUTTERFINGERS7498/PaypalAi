@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { DECISION_LABEL, fmtMoney, fmtTime, short } from "../lib/format";
 import { useStore } from "../lib/store";
-import type { AgentTrace, ChainVerify, EvidenceRecord } from "../lib/types";
+import type { AgentTrace, ChainVerify, EvidenceRecord, WebhookEvent } from "../lib/types";
 import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
 
 /** "How the agent decided": the engine's trace, stored in the evidence record (data.agent). */
@@ -107,6 +107,7 @@ export default function EvidenceView() {
   const [records, setRecords] = useState<EvidenceRecord[]>([]);
   const [trailValid, setTrailValid] = useState<boolean | null>(null);
   const [chain, setChain] = useState<ChainVerify | null>(null);
+  const [hooks, setHooks] = useState<{ events: WebhookEvent[]; webhook_verify: string } | null>(null);
   const load = useAction();
   const verify = useAction();
   const current = pid || focusPurchase || purchases[0]?.id || "";
@@ -118,6 +119,7 @@ export default function EvidenceView() {
     if (r) {
       setRecords(r.records);
       setTrailValid(r.chain_valid);
+      try { setHooks(await api.purchaseWebhooks(current)); } catch { setHooks(null); }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, current]);
@@ -175,6 +177,31 @@ export default function EvidenceView() {
       <ol className={`sx-chain ${chain?.valid ? "verified" : ""}`}>
         {records.map((r, i) => <Record key={r.record_id} r={r} index={i} />)}
       </ol>
+      {purchase && hooks && (
+        <section className="sx-panel" aria-labelledby="pp-events-h">
+          <div className="sx-panel-head">
+            <h2 id="pp-events-h">PayPal events for this purchase</h2>
+            <Chip tone={hooks.webhook_verify === "paypal" ? "ok" : "warn"}>
+              {hooks.webhook_verify === "paypal" ? "signatures checked with PayPal" : "signature check off (local demo)"}
+            </Chip>
+          </div>
+          {hooks.events.length === 0 ? (
+            <p className="muted small">No webhook has arrived for this purchase. Seeded examples have none, and a local run gets none unless PayPal can reach it.</p>
+          ) : (
+            <ul className="plain">
+              {hooks.events.map((e) => (
+                <li key={e.id} className="row wrap" style={{ gap: 8 }}>
+                  <span className="mono small">{fmtTime(e.received_at)}</span>
+                  <strong className="mono small">{e.event_type}</strong>
+                  <Chip tone={e.verified ? "ok" : "neutral"}>{e.verified ? "✔ signature verified" : "not verified"}</Chip>
+                  <Chip tone={e.processed ? "ok" : e.error ? "bad" : "neutral"}>{e.processed ? "applied" : e.error ? e.error.replace(/_/g, " ") : "stored"}</Chip>
+                  <span className="mono small muted">{e.id}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

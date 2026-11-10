@@ -9,7 +9,7 @@ import {
 export class MockPaypalClient implements PaypalClient {
   readonly mode = 'mock' as const;
   /** Every mutating call, for tests to assert on. */
-  readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim' | 'refund' | 'capture_authorization' | 'void_authorization'; subject_id: string; target: string; detail?: unknown }[] = [];
+  readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim' | 'refund' | 'capture_authorization' | 'void_authorization' | 'payout'; subject_id: string; target: string; detail?: unknown }[] = [];
   /** authorization id -> state, for holds (intent AUTHORIZE). */
   private auths = new Map<string, { status: 'CREATED' | 'CAPTURED' | 'VOIDED' | 'EXPIRED'; captureId: string | null; failNextCapture?: boolean }>();
   /** capture id -> refund, so a repeated request id returns the same refund and a second refund is refused. */
@@ -60,7 +60,7 @@ export class MockPaypalClient implements PaypalClient {
 
   async listDisputes(): Promise<PaypalDispute[]> { return [...this.disputes]; }
 
-  async provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string }): Promise<Record<string, unknown>> {
+  async provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string; pdf?: Buffer; filename?: string }): Promise<Record<string, unknown>> {
     assertTicket(ticket);
     this.calls.push({ op: 'provide_evidence', subject_id: ticket.subject_id, target: disputeId, detail: evidence });
     return { mock: true, action: 'provide_evidence', dispute_id: disputeId };
@@ -126,6 +126,33 @@ export class MockPaypalClient implements PaypalClient {
     a.status = 'VOIDED';
     this.calls.push({ op: 'void_authorization', subject_id: ticket.subject_id, target: authorizationId });
     return { status: 'VOIDED' };
+  }
+
+  /** batch id -> state. A receiver containing "self" is denied like PayPal's SELF_PAY_NOT_ALLOWED. */
+  private payouts = new Map<string, { status: string; item: string | null; error: string | null; senderBatchId: string; self: boolean }>();
+
+  async createPayout(ticket: ApprovalTicket, p: { amount: { currency_code: string; value: string }; receiverEmail: string; note: string; senderBatchId: string; senderItemId: string }): Promise<{ payout_batch_id: string; batch_status: string }> {
+    assertTicket(ticket);
+    const dup = [...this.payouts.entries()].find(([, v]) => v.senderBatchId === p.senderBatchId);
+    if (dup) return { payout_batch_id: dup[0], batch_status: dup[1].status };
+    this.counter += 1;
+    const id = `PAYOUT-MOCK-${String(this.counter).padStart(4, '0')}`;
+    const self = /self/i.test(p.receiverEmail);
+    // Created PENDING; the first status check sees it settled (SUCCESS, or DENIED for a payment to self).
+    this.payouts.set(id, { status: 'PENDING', item: 'PENDING', error: null, senderBatchId: p.senderBatchId, self });
+    this.calls.push({ op: 'payout', subject_id: ticket.subject_id, target: id, detail: { amount: p.amount, senderBatchId: p.senderBatchId } });
+    return { payout_batch_id: id, batch_status: 'PENDING' };
+  }
+
+  async getPayout(batchId: string): Promise<{ batch_status: string; item_status: string | null; error: string | null }> {
+    const v = this.payouts.get(batchId);
+    if (!v) throw new PaypalError(`Mock payout ${batchId} not found`, 404, 'mock-debug-9');
+    if (v.status === 'PENDING') {
+      v.status = v.self ? 'DENIED' : 'SUCCESS';
+      v.item = v.self ? 'FAILED' : 'SUCCESS';
+      v.error = v.self ? 'SELF_PAY_NOT_ALLOWED' : null;
+    }
+    return { batch_status: v.status, item_status: v.item, error: v.error };
   }
 
   async verifyWebhook(h: WebhookHeaders, _event: unknown): Promise<boolean> {

@@ -6,7 +6,7 @@ import { setApprovalToken } from "./http";
 import { ApiError } from "./types";
 import type { Api, Approval, Dispute, EvidenceRecord, Health, Mandate, Purchase } from "./types";
 
-export type TabId = "fence" | "mandates" | "ledger" | "evidence" | "disputes";
+export type TabId = "fence" | "mandates" | "ledger" | "evidence" | "disputes" | "merchant";
 
 interface Store {
   api: Api;

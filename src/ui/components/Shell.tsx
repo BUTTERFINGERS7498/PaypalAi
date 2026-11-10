@@ -9,6 +9,7 @@ import FenceView from "./FenceView";
 import Landing from "./Landing";
 import LedgerView from "./LedgerView";
 import MandateView from "./MandateView";
+import MerchantView from "./MerchantView";
 import { Chip, Notice } from "./ui";
 
 const TABS: { id: TabId; n: string; label: string; title: string; help: string }[] = [
@@ -17,6 +18,7 @@ const TABS: { id: TabId; n: string; label: string; title: string; help: string }
   { id: "ledger", n: "02", label: "Purchase ledger", title: "Purchase ledger", help: "Tell the agent what to buy. Every choice lands here with its mandate check, and larger ones wait in the approval queue." },
   { id: "evidence", n: "03", label: "Evidence trail", title: "Evidence trail", help: "The notebook behind each purchase: what the agent saw, what it chose and whether it was allowed. Records are hash-chained, so edits show." },
   { id: "disputes", n: "04", label: "Disputes", title: "Disputes", help: "When a charge is challenged, the response is built from the evidence. The verdict (defensible or mandate breach) is computed by code." },
+  { id: "merchant", n: "05", label: "Merchant view", title: "Merchant view", help: "The seller's side: before shipping an order placed by an AI agent, check the signed mandate, the evidence chain and the payment. Ship, wait, or do not ship." },
 ];
 
 function Console({ onHome }: { onHome: () => void }) {
@@ -87,6 +89,7 @@ function Console({ onHome }: { onHome: () => void }) {
         {tab === "ledger" && <LedgerView />}
         {tab === "evidence" && <EvidenceView />}
         {tab === "disputes" && <DisputeView />}
+        {tab === "merchant" && <MerchantView />}
         <footer className="sx-foot">
           Signatures use our own ed25519 demo key. This project does not claim AP2/FIDO conformance, card-network integration or production readiness, and it does not shift liability. Everything runs against the PayPal sandbox.
         </footer>

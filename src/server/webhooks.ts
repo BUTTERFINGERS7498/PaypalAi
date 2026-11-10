@@ -85,6 +85,14 @@ export class WebhookHandler {
         : null;
       return this.done(event.id, p?.id ?? null, p ? null : 'unknown_purchase');
     }
+    if (type.startsWith('PAYMENT.PAYOUTS-ITEM.') || type.startsWith('PAYMENT.PAYOUTSBATCH.')) {
+      // A payout (feature B5) changed state: re-read it from PayPal rather than trusting the event body.
+      const batchId: string | undefined = res.payout_batch_id ?? res.batch_header?.payout_batch_id;
+      const d = batchId ? this.disputes.byPayoutBatch(String(batchId)) : null;
+      if (!d) return this.done(event.id, null, 'unknown_purchase');
+      const updated = await this.disputes.checkPayout(d.id);
+      return this.done(event.id, updated.purchase_id, null);
+    }
     if (type === 'PAYMENT.AUTHORIZATION.VOIDED') {
       // A hold was voided at PayPal (dashboard, or after it expired). Our own voids find the purchase already closed.
       const p = res.id ? this.gate.onAuthorizationVoided(String(res.id)) : null;

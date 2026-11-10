@@ -65,8 +65,13 @@ export interface PaypalClient {
   /** Read-only: the order's current state at PayPal (no ticket needed). */
   getOrder(paypalOrderId: string): Promise<{ status: string; capture_id: string | null }>;
   listDisputes(): Promise<PaypalDispute[]>;
-  provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string }): Promise<Record<string, unknown>>;
+  /** `pdf`: the evidence packet as a document (PayPal accepts JPG, GIF, PNG or PDF). */
+  provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string; pdf?: Buffer; filename?: string }): Promise<Record<string, unknown>>;
   acceptClaim(ticket: ApprovalTicket, disputeId: string, accept: { note: string }): Promise<Record<string, unknown>>;
+  /** Send money to a PayPal account by email (Payouts). `senderBatchId` is our idempotency key. */
+  createPayout(ticket: ApprovalTicket, p: { amount: { currency_code: string; value: string }; receiverEmail: string; note: string; senderBatchId: string; senderItemId: string }): Promise<{ payout_batch_id: string; batch_status: string }>;
+  /** Read-only: a payout batch and its (single) item. */
+  getPayout(batchId: string): Promise<{ batch_status: string; item_status: string | null; error: string | null }>;
   /** Refund a capture (full amount). `requestId` makes it idempotent: a retry returns the same refund. */
   refundCapture(ticket: ApprovalTicket, captureId: string, r: { amount: { currency_code: string; value: string }; note: string; requestId: string }): Promise<RefundResult>;
   verifyWebhook(headers: WebhookHeaders, event: unknown): Promise<boolean>;

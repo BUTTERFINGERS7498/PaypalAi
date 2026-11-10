@@ -10,6 +10,7 @@ import type {
   EvidenceRecord,
   Limits,
   MandateDraft,
+  PurchaseProof,
   Mandate,
   Purchase,
   StreamEvent,
@@ -296,6 +297,29 @@ class MockBackend implements Api {
   async listPurchases() {
     return this.purchases.map((p) => ({ ...p }));
   }
+  async reconcilePurchase(id: string) {
+    const p = this.purchases.find((x) => x.id === id);
+    if (!p) throw new ApiError(404, "not_found", "Purchase not found");
+    return { purchase: { ...p }, action: "skipped", paypal_status: null };
+  }
+  async purchaseProof(id: string): Promise<PurchaseProof> {
+    const p = this.purchases.find((x) => x.id === id);
+    if (!p) throw new ApiError(404, "not_found", "Purchase not found");
+    const reasons: string[] = [];
+    if (!p.within_mandate) reasons.push("the purchase was outside the mandate");
+    const paid = p.status === "completed";
+    const recommendation = reasons.length ? "do_not_ship" : paid ? "ship" : "wait";
+    if (!reasons.length) reasons.push(paid ? "mock data: in mandate and paid" : `mock data: not captured yet (${p.status})`);
+    return {
+      purchase: { ...p }, recommendation, reasons,
+      mandate: { id: p.mandate_id, version: p.mandate_version, signature: { valid: true, alg: "ed25519", key_id: "mock", version: p.mandate_version, reason: null } },
+      chain: { valid: true, head_hash: "0".repeat(64), broken_at_seq: null },
+      evidence: { count: this.evidence.filter((e) => e.purchase_id === id).length, first: null, last: null, last_hash: null },
+    };
+  }
+  async purchaseWebhooks(_id: string) {
+    return { events: [], webhook_verify: "off" };
+  }
   async purchaseEvidence(id: string) {
     return { records: this.evidence.filter((r) => r.purchase_id === id), chain_valid: true };
   }
@@ -428,7 +452,7 @@ class MockBackend implements Api {
   async syncDisputes(): Promise<Dispute[]> {
     throw new ApiError(502, "upstream_error", "Mock mode: the PayPal Disputes API is not available. Use a simulated dispute.");
   }
-  async simulateDispute(b: { purchase_id: string; reason?: string }) {
+  async simulateDispute(b: { purchase_id: string; reason?: string; amount?: string }) {
     const p = this.purchases.find((x) => x.id === b.purchase_id);
     if (!p) throw new ApiError(404, "not_found", "Purchase not found");
     if (p.status !== "completed") throw new ApiError(409, "invalid_state", "Only completed purchases can be disputed");
@@ -496,6 +520,12 @@ class MockBackend implements Api {
     d.updated_at = now();
     this.emit({ type: "dispute.updated", data: { ...d } });
     return { ...d };
+  }
+  async payoutDispute(_id: string): Promise<Dispute> {
+    throw new ApiError(409, "invalid_state", "Mock data: payouts need the server");
+  }
+  async checkPayout(_id: string): Promise<Dispute> {
+    throw new ApiError(409, "invalid_state", "Mock data: payouts need the server");
   }
   subscribe(handler: (e: StreamEvent) => void) {
     this.handlers.add(handler);
