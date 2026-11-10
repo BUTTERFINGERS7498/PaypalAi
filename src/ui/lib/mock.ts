@@ -63,7 +63,7 @@ class MockBackend implements Api {
     const m = this.makeMandate("m_MOCK0001", 1, "Groceries, $200/month", {
       monthly_cap: "200.00",
       categories: ["groceries"],
-      approval_above: "75.00",
+      approval_above: "40.00",
     });
     this.versions.set(m.id, [m]);
     // Historical, completed purchases with a valid chain.

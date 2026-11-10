@@ -25,7 +25,7 @@ const snapshot = () => {
     const mandate = s.mandates.require('m_seed_groceries');
     assert.equal(mandate.status, 'active');
     assert.equal(mandate.limits.monthly_cap, '200.00');
-    assert.equal(mandate.limits.approval_above, '75.00');
+    assert.equal(mandate.limits.approval_above, '40.00');
     assert.deepEqual(mandate.limits.categories, ['groceries']);
     assert.equal(s.mandates.verify(mandate.id).valid, true);
     assert.equal(s.evidence.verify().valid, true);

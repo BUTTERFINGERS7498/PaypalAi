@@ -88,6 +88,8 @@ On an in-mandate purchase the same process gives **DEFENSIBLE**: provide the evi
 
 > **How these were recorded, honestly.** They were filmed on a local run with the **mock PayPal client** and the on-server semantic engine, so nothing in them touches PayPal. The step where the buyer approves at PayPal is stood in for by posting the same `CHECKOUT.ORDER.APPROVED` webhook PayPal would send (`demo/approve-orders.mjs`). Disputes are the labelled **simulated** ones. The real PayPal sandbox path is described in [Run it against the real PayPal sandbox](#-run-it-against-the-real-paypal-sandbox).
 >
+> **Recorded with an earlier seed.** The clips and the video were made when the seeded mandate's approval line was $75. It is now $40, so `restock the pantry basics` ($42) waits in the approval queue instead of checking out at once.
+>
 > **Re-make them:** the video is three scenario files in [`demo/cut/`](demo/cut): `intro.json` (an animated HTML intro, `intro.html`), `part-a.json` and `part-b.json`, rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) and joined with ffmpeg. The GIFs above are cut from those recordings with ffmpeg.
 
 ---
@@ -308,7 +310,7 @@ npm start                     # http://localhost:8787
 
 Open **http://localhost:8787** for the console and **http://localhost:8787/api/health** for status. The default `.env.example` selects the no-credentials path (`PAYPAL_MODE=mock`, `AGENT_MODE=mock`, `WEBHOOK_VERIFY=off`). Run `npm run seed` before the first start; running it again keeps existing rows, keys and evidence. `APPROVAL_TOKEN` is blank in the example, so locally everything is open; set it (and type it into the console's approval password field) to try the protected mode.
 
-The seed creates a mandate named **Groceries, $200/month** (groceries only, approval above $75) and a catalog of 14 fictional items: 10 groceries, 3 electronics and 1 household, for example `GRO-PANTRY-42` ($42), `ELE-ESP-01` espresso machine ($129) and `ELE-GAME-01` games console ($299). The seeded purchases are **synthetic** examples, never real PayPal transactions.
+The seed creates a mandate named **Groceries, $200/month** (groceries only, approval above $40) and a catalog of 14 fictional items: 10 groceries, 3 electronics and 1 household, for example `GRO-PANTRY-42` ($42), `ELE-ESP-01` espresso machine ($129) and `ELE-GAME-01` games console ($299). The seeded purchases are **synthetic** examples, never real PayPal transactions.
 
 ### Try the demo (mock mode)
 
@@ -325,7 +327,7 @@ The seed creates a mandate named **Groceries, $200/month** (groceries only, appr
 5. Tick **Demo: let the agent break its mandate** and ask `buy sku ELE-GAME-01`. The checker records the breach.
 6. In **4. Disputes**, create a *simulated* dispute for each purchase and assemble it. The in-mandate one resolves to `DEFENSIBLE`, the rogue one to `MANDATE_BREACH`.
 
-To see the human approval queue, create a second mandate with categories `electronics`, a $500 cap and a $75 threshold, then ask `buy sku ELE-ESP-01`: $129 is above the threshold, so it waits for you. (An electronics request under the groceries mandate is a category breach and is blocked, not queued.)
+To see the human approval queue, ask the seeded mandate to `restock the pantry basics`: the $42 bundle is above the $40 line, so it waits for you (and, with `APPROVAL_HOLD=authorize` and `CHECKOUT_MODE=card`, the money is held at PayPal meanwhile). (An electronics request under the groceries mandate is a category breach and is blocked, not queued.)
 
 ### Try the no-key agent: the on-server semantic engine
 

@@ -159,7 +159,9 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
     }
     if (method === 'POST' && (m = path.match(/^\/api\/mandates\/([\w-]+)\/revoke$/))) {
       requireAuth(req);
-      return sendJson(res, 200, mandates.revoke(m[1]));
+      const revoked = mandates.revoke(m[1]);
+      await gate.onMandateRevoked(m[1]); // reject what was waiting on it and release any money held at PayPal
+      return sendJson(res, 200, mandates.get(m[1]) ?? revoked);
     }
     if (method === 'POST' && (m = path.match(/^\/api\/mandates\/([\w-]+)\/verify$/))) {
       const b = await readJson(req);

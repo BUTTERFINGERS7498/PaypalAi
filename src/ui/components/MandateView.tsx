@@ -165,7 +165,7 @@ function MandateCard({ m }: { m: Mandate }) {
 /** Describe the mandate in plain English; the server drafts the limits. Nothing is signed until the form is submitted. */
 function DraftFromText({ onDraft }: { onDraft: (d: MandateDraft) => void }) {
   const { api } = useStore();
-  const [text, setText] = useState("Groceries only, $200 a month, ask me above $75, and ask me if you are not sure.");
+  const [text, setText] = useState("Groceries only, $200 a month, ask me above $40, and ask me if you are not sure.");
   const [draft, setDraft] = useState<MandateDraft | null>(null);
   const act = useAction();
   return (
@@ -196,7 +196,7 @@ export default function MandateView() {
   const { mandates, api } = useStore();
   const [label, setLabel] = useState("");
   const [open, setOpen] = useState(false);
-  const [initial, setInitial] = useState({ monthly_cap: "200.00", categories: "groceries", approval_above: "75.00", ask_when_unsure: false });
+  const [initial, setInitial] = useState({ monthly_cap: "200.00", categories: "groceries", approval_above: "40.00", ask_when_unsure: false });
   const [formKey, setFormKey] = useState(0);
   const act = useAction();
   return (

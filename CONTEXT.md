@@ -19,7 +19,10 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
-- **B2 Hold then capture (2026-11-11, uncommitted):** env `APPROVAL_HOLD=authorize` (+ `CHECKOUT_MODE=card`). `Gate.placeHold`
+- **Seed approval line lowered to $40 + revoke closes pending approvals (2026-11-11):** `src/server/seed.ts`, `infra/verify-seed.ts`,
+  UI mock + landing + README. `Gate.onMandateRevoked` (called by the revoke route) rejects pending approvals as
+  `system:mandate_revoked` and voids holds (security-review finding). `tests/checker.test.ts` updated; `npm test` 64 pass.
+- **B2 Hold then capture (2026-11-11, pushed 443bf02):** env `APPROVAL_HOLD=authorize` (+ `CHECKOUT_MODE=card`). `Gate.placeHold`
   (order intent AUTHORIZE, ticket `mandate:hold`), `captureHold` on approve (after re-check), `releaseHold` on reject or failed
   re-check; `gate.reject` is now async. Client: `createOrder(…, {intent})`, `captureAuthorization`, `voidAuthorization`.
   New column `purchases.paypal_authorization_id` (migration in `db.ts` `migrate()`). Evidence `authorized`/`voided`. UI: held
@@ -132,7 +135,7 @@ To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `h
 ## Notes
 - Local `.env` (never commit; git-ignored) is set to PAYPAL_MODE=sandbox, AGENT_MODE=live, model `cc/claude-sonnet-5-5` via 9router
   (`http://localhost:20128`). For local engine runs override: `$env:AGENT_MODE='engine'`, run `npm run build:engine` once.
-- Seeded grocery catalog tops out at $60, so an over-$75 approval needs a lower threshold or a second electronics mandate (README explains).
+- Seeded mandate approval line is $40 (lowered from $75 on 2026-11-11) so `restock the pantry basics` ($42) reaches the approval queue / hold. The recorded demo video still says seventy-five dollars.
 - Tooling I used and cleaned up: Docker Desktop (started then stopped), scratch folders in TEMP. `hackathon-notes/` and the plan PDF
   are git-ignored. Commit author identity is set per-repo (BUTTERFINGERS7498 noreply email); never add Co-authored-by trailers; never push
   without being asked.

@@ -27,7 +27,9 @@ export async function seedDemo(db: DatabaseSync): Promise<{ mandate_id: string; 
     id: SEED_MANDATE_ID,
     label: 'Groceries, $200/month',
     owner: 'demo-user',
-    limits: { monthly_cap: '200.00', categories: ['groceries'], approval_above: '75.00' },
+    // $40 so the $42 pantry bundle (the most expensive common grocery ask) reaches the approval queue and, with
+    // APPROVAL_HOLD=authorize, the hold. The seeded purchases ($18, $5, $4.50) stay under it.
+    limits: { monthly_cap: '200.00', categories: ['groceries'], approval_above: '40.00' },
   });
 
   let added = 0;

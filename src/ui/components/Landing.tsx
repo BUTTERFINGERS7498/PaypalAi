@@ -22,7 +22,7 @@ type Cat = "groceries" | "electronics";
 
 function HeroFence() {
   const [cap, setCap] = useState(200);
-  const [appr, setAppr] = useState(75);
+  const [appr, setAppr] = useState(40);
   const [price, setPrice] = useState(18);
   const [cat, setCat] = useState<Cat>("groceries");
   const apprEff = Math.min(appr, cap);
@@ -136,7 +136,7 @@ function Walkthrough() {
           <dt>Label</dt><dd>Groceries, $200/month</dd>
           <dt>Allowed</dt><dd>groceries only</dd>
           <dt>Monthly cap</dt><dd>$200.00</dd>
-          <dt>Ask me first above</dt><dd>$75.00</dd>
+          <dt>Ask me first above</dt><dd>$40.00</dd>
           <dt>Seal</dt><dd>ed25519 signature · version 1 (a later edit becomes version 2; old versions never change)</dd>
         </dl>
       </>
@@ -160,7 +160,7 @@ function Walkthrough() {
         <ul className="lx-checks">
           <li className="yes">Category “groceries” is allowed</li>
           <li className="yes">$18.00 fits the $200.00 monthly cap</li>
-          <li className="yes">Under the $75.00 approval line, so no pause for you</li>
+          <li className="yes">Under the $40.00 approval line, so no pause for you</li>
         </ul>
         <p><Stamp tone="ok">Within mandate</Stamp> The agent may go ahead.</p>
       </>
@@ -170,7 +170,7 @@ function Walkthrough() {
         <ul className="lx-checks">
           <li className="no">Category “electronics” is not on the slip</li>
           <li className="no">$299.00 is more than the $200.00 monthly cap</li>
-          <li className="no">Over the $75.00 approval line</li>
+          <li className="no">Over the $40.00 approval line</li>
         </ul>
         <p><Stamp tone="bad">Outside mandate</Stamp> The record says so honestly, even though the demo override let it through.</p>
       </>

@@ -302,6 +302,8 @@ With `AGENT_MODE=engine` it also carries `"engine": { "state": "ready", "backend
 - `GET /api/mandates/:id` → `Mandate`; `GET /api/mandates/:id/versions` → `{ "versions": [Mandate] }`
 - `POST /api/mandates/:id/limits` body `{ "monthly_cap"?, "categories"?, "approval_above"? }` → `200 Mandate` (new version)
 - `POST /api/mandates/:id/revoke` → `200 Mandate` (`status: revoked`); appends a `mandate_revoked` evidence record.
+  Every approval still pending on it is rejected as `system:mandate_revoked` (purchase → `rejected`), and any money held
+  at PayPal for it is voided at once (evidence `voided`, `reason: mandate_revoked`).
 - `POST /api/mandates/:id/verify` → `200 { "valid": true, "alg": "ed25519", "key_id": "…", "version": 3, "reason": null }`
   Recomputes the payload hash and verifies the signature in a separate step.
   Optional body `{ "version": 2 }`.
@@ -501,7 +503,7 @@ For a candidate `price` against the **current active version**, with `spent` thi
 | `agent_requests` | `id TEXT PK`, `mandate_id`, `text`, `outcome`, `reply`, `purchase_id`, `approval_id`, `evidence_record_id`, `created_at` |
 
 **Seed (`scripts/seed`)** — demo state matching the video script: one active mandate
-"Groceries, $200/month" (`monthly_cap 200.00`, `categories ["groceries"]`, `approval_above 75.00`),
+"Groceries, $200/month" (`monthly_cap 200.00`, `categories ["groceries"]`, `approval_above 40.00`),
 signed by the app's key via the server's own module (seed must call the server library, not
 hand-roll signatures); a catalog of ~14 items: ~9 `groceries` (prices 2–60 incl. a pair at 42.00/51.00),
 a few `electronics` (e.g. Espresso machine 129.00, Games console 299.00) and one `household`; plus

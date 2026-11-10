@@ -77,6 +77,23 @@ test('if the mandate no longer allows it at approval time, the hold is released 
   assert.equal(b.s.evidence.forPurchase(r.purchase!.id).find((e) => e.decision === 'voided')!.data.reason, 'mandate_recheck_failed');
 });
 
+test('revoking a mandate rejects what was waiting on it and releases the money held at PayPal at once', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  b.s.mandates.revoke(b.mandate.id);
+  const out = await b.s.gate.onMandateRevoked(b.mandate.id);
+  assert.deepEqual(out, { closed: 1, released: 1 });
+  assert.equal(b.s.store.getPurchase(r.purchase!.id)!.status, 'rejected');
+  assert.equal(b.s.store.getApproval(r.approval!.id)!.status, 'rejected');
+  assert.equal(b.s.store.getApproval(r.approval!.id)!.decided_by, 'system:mandate_revoked');
+  assert.ok(b.paypal.calls.some((c) => c.op === 'void_authorization' && c.target === r.purchase!.paypal_authorization_id));
+  const voided = b.s.evidence.forPurchase(r.purchase!.id).find((e) => e.decision === 'voided')!;
+  assert.equal(voided.data.reason, 'mandate_revoked');
+  assert.equal(voided.data.authorised_by, 'system:mandate_revoked');
+  // Running it again finds nothing left to do.
+  assert.deepEqual(await b.s.gate.onMandateRevoked(b.mandate.id), { closed: 0, released: 0 });
+});
+
 test('if PayPal will not place the hold, the approval still works the old way and the failure is recorded', async () => {
   const b = boot();
   const r = await b.s.agent.handle({ mandate_id: b.mandate.id, text: 'buy sku GRO-BIG-FAIL' });

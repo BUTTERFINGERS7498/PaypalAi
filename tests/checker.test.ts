@@ -70,17 +70,33 @@ test('threshold and monthly cap are inclusive; awaiting payer reserves budget', 
   assert.equal((await s.get(`/api/purchases?mandate_id=${m.id}`)).purchases.length, 2);
 });
 
-for (const reason of ['revoked', 'budget_consumed', 'category_changed'] as const) {
+test('revoking a mandate closes the approvals waiting on it, so nothing can be bought on it later', async t => {
+  const s = await startServer(t);
+  const m = await s.mandate({ monthly_cap: '60.00', approval_above: '40.00' });
+  const pending = await s.instruct(m.id, 'QA-GRO-42');
+  assert.equal(pending.outcome, 'needs_approval');
+  await s.post(`/api/mandates/${m.id}/revoke`);
+  const purchase = (await s.get('/api/purchases')).purchases.find((p: any) => p.id === pending.purchase.id);
+  assert.equal(purchase.status, 'rejected');
+  assert.equal(purchase.paypal_order_id, null);
+  // The approval is already decided by the system, so a late approve is refused.
+  const late = await s.post(`/api/approvals/${pending.approval.id}/approve`, { decided_by: 'qa' }, 409);
+  assert.equal(late.error.code, 'invalid_state');
+  const records = (await s.get(`/api/purchases/${pending.purchase.id}/evidence`)).records;
+  const rejected = records.find((r: any) => r.decision === 'rejected');
+  assert.equal(rejected.data.decided_by, 'system:mandate_revoked');
+  assert.equal(records.filter((r: any) => r.decision === 'order_created').length, 0);
+});
+
+// The re-check at approval time still matters when the mandate changes without being revoked.
+for (const reason of ['budget_consumed', 'category_changed'] as const) {
   test(`approval rechecks current mandate when ${reason}`, async t => {
     const s = await startServer(t);
     const m = await s.mandate({ monthly_cap: '60.00', approval_above: '40.00' });
     const pending = await s.instruct(m.id, 'QA-GRO-42');
     assert.equal(pending.outcome, 'needs_approval');
     let expected: string;
-    if (reason === 'revoked') {
-      await s.post(`/api/mandates/${m.id}/revoke`);
-      expected = 'inactive_mandate';
-    } else if (reason === 'category_changed') {
+    if (reason === 'category_changed') {
       await s.post(`/api/mandates/${m.id}/limits`, { categories: ['household'] });
       expected = 'category_not_allowed';
     } else {

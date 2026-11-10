@@ -254,6 +254,32 @@ export class Gate {
     }
   }
 
+  /**
+   * A mandate was revoked: nothing waiting on it may still be bought, so every pending approval on it is rejected
+   * (as 'system:mandate_revoked') and any money held at PayPal for it is released now, not when the hold expires.
+   */
+  async onMandateRevoked(mandateId: string): Promise<{ closed: number; released: number }> {
+    let closed = 0; let released = 0;
+    for (const p of this.store.listPurchases({ mandate_id: mandateId, status: 'pending_approval' })) {
+      if (p.approval_id) {
+        const ap = this.store.getApproval(p.approval_id);
+        if (ap?.status === 'pending') {
+          await this.reject(ap.id, 'system:mandate_revoked', 'The mandate was revoked before a decision.');
+          closed += 1;
+          if (p.paypal_authorization_id) released += 1;
+          continue;
+        }
+      }
+      // No pending approval to go through (should not happen): close it and release any hold directly.
+      const moved = this.store.transitionPurchase(p.id, 'pending_approval', { status: 'rejected' });
+      if (moved) {
+        closed += 1;
+        if (moved.paypal_authorization_id) { await this.releaseHold(moved, 'system:mandate_revoked', 'mandate_revoked'); released += 1; }
+      }
+    }
+    return { closed, released };
+  }
+
   async reject(approvalId: string, by: string, note: string | null): Promise<{ approval: Approval; purchase: Purchase }> {
     const ap = this.store.getApproval(approvalId);
     if (!ap) throw notFound(`Approval ${approvalId} not found`);
@@ -270,7 +296,7 @@ export class Gate {
       data: { approval_id: approvalId, decided_by: by, note },
     });
     // Feature B2: a rejected purchase releases the money held at PayPal.
-    if (rejected.paypal_authorization_id) await this.releaseHold(rejected, `human:${by}`, 'rejected');
+    if (rejected.paypal_authorization_id) await this.releaseHold(rejected, by.startsWith('system:') ? by : `human:${by}`, by.startsWith('system:') ? 'mandate_revoked' : 'rejected');
     return { approval: decided, purchase: this.store.getPurchase(purchase.id)! };
   }
 
