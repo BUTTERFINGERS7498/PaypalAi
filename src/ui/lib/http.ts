@@ -53,6 +53,7 @@ export function createHttpApi(): Api {
     mandateVersions: async (id) =>
       (await req<{ versions: never[] }>("GET", `/api/mandates/${id}/versions`)).versions,
     createMandate: (b) => req("POST", "/api/mandates", b),
+    draftMandate: (text) => req("POST", "/api/mandates/draft", { text }),
     updateLimits: (id, b) => req("POST", `/api/mandates/${id}/limits`, b),
     revokeMandate: (id) => req("POST", `/api/mandates/${id}/revoke`),
     verifyMandate: (id, version) =>

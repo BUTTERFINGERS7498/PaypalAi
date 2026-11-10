@@ -22,6 +22,10 @@ export interface SelectionRequest {
   item: CatalogItem;
   rationale: string;
   demo_rogue: boolean;
+  /** How the agent reached its choice (scores, query expansion, substitution...). Stored in the evidence record. */
+  trace?: Record<string, unknown>;
+  /** The agent was not sure this is what the user meant (see the mandate's optional ask_when_unsure clause). */
+  low_confidence?: boolean;
 }
 
 export interface SelectionOutcome {
@@ -70,7 +74,7 @@ export class Gate {
 
     const price = toCents(r.item.price.value);
     const spent = this.store.spentCents(m.id);
-    const check = checkSelection({ status: m.status, limits: m.limits, category: r.item.category, priceCents: price, spentCents: spent });
+    const check = checkSelection({ status: m.status, limits: m.limits, category: r.item.category, priceCents: price, spentCents: spent, lowConfidence: r.low_confidence === true });
     const snapshot = this.mandates.snapshot(m);
     const base = {
       mandate: snapshot,
@@ -82,6 +86,7 @@ export class Gate {
       within_mandate: check.within_mandate,
       breaches: check.breaches as string[],
       demo_rogue: r.demo_rogue,
+      data: r.trace ? { agent: r.trace } : {},
     };
     const itemLabel = `${r.item.name} (${formatMoney(r.item.price.currency_code, r.item.price.value)})`;
 
@@ -102,15 +107,20 @@ export class Gate {
     // 2. Within mandate but above the approval threshold: queue for a human. Nothing is charged.
     if (check.within_mandate && check.reasons.length) {
       const purchase = newPurchase('pending_approval');
+      const why = check.reasons.map((x) => x === 'above_approval_threshold'
+        ? `above your ${formatMoney('USD', m.limits.approval_above)} approval threshold`
+        : 'the agent was not sure this is what you meant').join('; ');
       const approval = this.store.insertApproval({
         purchase_id: purchase.id,
-        summary: `Buy ${r.item.name} (${formatMoney(r.item.price.currency_code, r.item.price.value)}): above your ${formatMoney('USD', m.limits.approval_above)} approval threshold`,
+        summary: `Buy ${r.item.name} (${formatMoney(r.item.price.currency_code, r.item.price.value)}): ${why}`,
         reasons: check.reasons,
       });
       const withApproval = this.store.updatePurchase(purchase.id, { approval_id: approval.id });
       const ev = this.evidence.append({ ...base, decision: 'needs_approval', budget_after: centsToMoney(spent + price), purchase_id: purchase.id });
       return { outcome: 'needs_approval', purchase: withApproval, approval, evidence: ev,
-        reply: `${itemLabel} is above your ${formatMoney('USD', m.limits.approval_above)} threshold, so it is waiting for your approval. Nothing was charged.` };
+        reply: check.reasons.includes('above_approval_threshold')
+          ? `${itemLabel} is above your ${formatMoney('USD', m.limits.approval_above)} threshold, so it is waiting for your approval. Nothing was charged.`
+          : `I'm not sure ${itemLabel} is what you meant, and your mandate says to ask when unsure, so it is waiting for your approval. Nothing was charged.` };
     }
 
     // 3. Within mandate, under the threshold (or the labelled rogue demo): check out.

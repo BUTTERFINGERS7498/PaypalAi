@@ -16,6 +16,7 @@ export interface LimitsInput {
   monthly_cap?: string | number;
   categories?: string[];
   approval_above?: string | number;
+  ask_when_unsure?: boolean;
 }
 
 export interface VerifyResult {
@@ -38,7 +39,12 @@ export function normaliseLimits(input: LimitsInput, base?: Limits): Limits {
   if (aboveC > capC) throw badRequest('approval_above cannot exceed monthly_cap');
   const categories = [...new Set((Array.isArray(cats) ? cats : []).map((c) => String(c).trim().toLowerCase()).filter(Boolean))];
   if (!categories.length) throw badRequest('categories must be a non-empty list');
-  return { currency_code: 'USD', monthly_cap: centsToMoney(capC), categories, approval_above: centsToMoney(aboveC) };
+  const unsure = input.ask_when_unsure ?? base?.ask_when_unsure;
+  if (unsure !== undefined && typeof unsure !== 'boolean') throw badRequest('ask_when_unsure must be true or false');
+  const limits: Limits = { currency_code: 'USD', monthly_cap: centsToMoney(capC), categories, approval_above: centsToMoney(aboveC) };
+  // Stored only when on, so older signed payloads are byte-for-byte unchanged.
+  if (unsure === true) limits.ask_when_unsure = true;
+  return limits;
 }
 
 export class MandateService {

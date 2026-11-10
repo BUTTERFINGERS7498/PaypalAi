@@ -9,6 +9,7 @@ import type {
   Dispute,
   EvidenceRecord,
   Limits,
+  MandateDraft,
   Mandate,
   Purchase,
   StreamEvent,
@@ -246,6 +247,25 @@ class MockBackend implements Api {
     this.versions.set(m.id, [m]);
     this.emit({ type: "mandate.updated", data: m });
     return m;
+  }
+  /** Mock only: a small rule-based reading. The real server also uses the semantic engine. */
+  async draftMandate(text: string): Promise<MandateDraft> {
+    await sleep(300);
+    const t = text.toLowerCase();
+    const cap = t.match(/\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:dollars)?\s*(?:a|per|each)\s*month/);
+    const appr = t.match(/(?:above|over|more than)\s*\$?\s*(\d+(?:\.\d{1,2})?)/);
+    const cats = ["groceries", "electronics", "household"].filter((c) => t.includes(c) || (c === "groceries" && /food|pantry|snack/.test(t)));
+    const missing: MandateDraft["missing"] = [];
+    if (!cap) missing.push("monthly_cap");
+    if (!cats.length) missing.push("categories");
+    if (!appr) missing.push("approval_above");
+    return {
+      label: cats.length ? `${cats[0][0].toUpperCase()}${cats[0].slice(1)}${cap ? `, $${cap[1]}/month` : ""}` : "New mandate",
+      limits: { monthly_cap: cap ? Number(cap[1]).toFixed(2) : null, categories: cats, approval_above: appr ? Number(appr[1]).toFixed(2) : null, ask_when_unsure: /not sure|unsure/.test(t) },
+      notes: ["mock data: a simple rule-based reading"],
+      missing,
+      excluded: [],
+    };
   }
   async updateLimits(id: string, b: Partial<Limits>) {
     const cur = this.current(id);

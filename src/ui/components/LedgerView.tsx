@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz } from "ag-grid-community";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { fmtMoney, fmtTime } from "../lib/format";
+import { fmtMoney, fmtTime, reasonLabel } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { AgentResult, Purchase } from "../lib/types";
 import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
@@ -101,11 +101,23 @@ function AskAgent() {
       </form>
       {act.error && <Notice kind="error">{act.error}</Notice>}
       {result && (
-        <Notice kind={result.outcome === "blocked" ? "warn" : "ok"}>
+        <Notice kind={result.outcome === "blocked" ? "warn" : result.choices?.length ? "info" : "ok"}>
           <p>
-            <Chip tone={result.outcome === "blocked" ? "bad" : "info"}>{result.outcome.replace("_", " ")}</Chip>{" "}
+            <Chip tone={result.outcome === "blocked" ? "bad" : "info"}>{result.choices?.length ? "question" : result.outcome.replace("_", " ")}</Chip>{" "}
             {result.reply}
           </p>
+          {result.choices && result.choices.length > 0 && (
+            <div className="row wrap" role="group" aria-label="Choose one" style={{ marginBottom: 8 }}>
+              {result.choices.map((c) => (
+                <button key={c.sku} className="sx-btn primary" disabled={act.busy} onClick={async () => {
+                  const answer = `buy sku ${c.sku}`;
+                  setText(answer);
+                  const r = await act.run(() => api.instruct({ mandate_id: selected, text: answer, demo_rogue: rogue }));
+                  if (r) setResult(r);
+                }}>{c.name} · ${c.price}</button>
+              ))}
+            </div>
+          )}
           <div className="row wrap">
             {result.purchase?.approve_url && (
               <a className="sx-btn" href={result.purchase.approve_url} target="_blank" rel="noopener noreferrer">Open PayPal to approve (sandbox)</a>
@@ -133,7 +145,7 @@ function ApprovalQueue() {
               <div>
                 <strong>{a.summary}</strong>
                 <div className="muted small">
-                  {a.reasons.join(", ")} · requested {fmtTime(a.created_at)} · decision recorded as “{operator}”
+                  {a.reasons.map(reasonLabel).join(", ")} · requested {fmtTime(a.created_at)} · decision recorded as “{operator}”
                 </div>
               </div>
               <div className="row wrap">

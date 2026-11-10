@@ -3,24 +3,27 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { fmtTime, short } from "../lib/format";
 import { useStore } from "../lib/store";
-import type { Mandate, VerifyResult } from "../lib/types";
+import type { Mandate, MandateDraft, VerifyResult } from "../lib/types";
 import { Notice, Section, Stamp, useAction } from "./ui";
 
 const parseCats = (s: string) => s.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
 const validMoney = (v: string) => /^\d+(\.\d{1,2})?$/.test(v.trim());
 const two = (v: string) => parseFloat(v).toFixed(2);
 
+type LimitsValue = { monthly_cap: string; categories: string[]; approval_above: string; ask_when_unsure: boolean };
+
 function LimitsForm(props: {
-  initial: { monthly_cap: string; categories: string; approval_above: string };
+  initial: { monthly_cap: string; categories: string; approval_above: string; ask_when_unsure?: boolean };
   submitLabel: string;
   busy: boolean;
-  onSubmit: (v: { monthly_cap: string; categories: string[]; approval_above: string }) => void;
+  onSubmit: (v: LimitsValue) => void;
   onCancel?: () => void;
   idp: string;
 }) {
   const [cap, setCap] = useState(props.initial.monthly_cap);
   const [cats, setCats] = useState(props.initial.categories);
   const [appr, setAppr] = useState(props.initial.approval_above);
+  const [unsure, setUnsure] = useState(props.initial.ask_when_unsure === true);
   const [err, setErr] = useState<string | null>(null);
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -29,7 +32,7 @@ function LimitsForm(props: {
     const c = parseCats(cats);
     if (!c.length) return setErr("Enter at least one category.");
     setErr(null);
-    props.onSubmit({ monthly_cap: two(cap), categories: c, approval_above: two(appr) });
+    props.onSubmit({ monthly_cap: two(cap), categories: c, approval_above: two(appr), ask_when_unsure: unsure });
   }
   return (
     <form onSubmit={submit} className="sx-form">
@@ -39,6 +42,10 @@ function LimitsForm(props: {
       <input id={`${props.idp}-cat`} value={cats} onChange={(e) => setCats(e.target.value)} required />
       <label htmlFor={`${props.idp}-apr`}>Ask me to approve purchases above (USD)</label>
       <input id={`${props.idp}-apr`} inputMode="decimal" value={appr} onChange={(e) => setAppr(e.target.value)} required />
+      <label className="sx-check" style={{ fontWeight: 400, marginTop: 4 }}>
+        <input type="checkbox" checked={unsure} onChange={(e) => setUnsure(e.target.checked)} />
+        <span><strong>Ask me when the agent is unsure</strong>: a weak match waits for my approval, even under the approval line</span>
+      </label>
       {err && <Notice kind="error">{err}</Notice>}
       <div className="row">
         <button className="sx-btn primary" disabled={props.busy}>{props.busy ? "Saving…" : props.submitLabel}</button>
@@ -76,6 +83,9 @@ function MandateCard({ m }: { m: Mandate }) {
         <p className="clause"><i>§1</i><span>The agent may spend up to <strong className="sx-big">USD {m.limits.monthly_cap}</strong> each month ({m.budget.period}, UTC).</span></p>
         <p className="clause"><i>§2</i><span>Only in these categories: <strong>{m.limits.categories.join(", ")}</strong>.</span></p>
         <p className="clause"><i>§3</i><span>Any single purchase above <strong className="sx-big">USD {m.limits.approval_above}</strong> waits for a human to approve it.</span></p>
+        {m.limits.ask_when_unsure && (
+          <p className="clause"><i>§4</i><span>When the agent is <strong>not sure</strong> an item is what was meant, it waits for a human to approve it.</span></p>
+        )}
       </div>
 
       <div className="budget" aria-label="Budget">
@@ -98,7 +108,7 @@ function MandateCard({ m }: { m: Mandate }) {
           <h4>Edit limits (saves a new signed version {m.version + 1})</h4>
           <LimitsForm
             idp={`edit-${m.id}`}
-            initial={{ monthly_cap: m.limits.monthly_cap, categories: m.limits.categories.join(", "), approval_above: m.limits.approval_above }}
+            initial={{ monthly_cap: m.limits.monthly_cap, categories: m.limits.categories.join(", "), approval_above: m.limits.approval_above, ask_when_unsure: m.limits.ask_when_unsure }}
             submitLabel={`Save as version ${m.version + 1}`}
             busy={act.busy}
             onCancel={() => setEditing(false)}
@@ -142,7 +152,7 @@ function MandateCard({ m }: { m: Mandate }) {
           <ul className="plain">
             {versions.map((v) => (
               <li key={v.version}>
-                <strong>v{v.version}</strong> · cap USD {v.limits.monthly_cap} · {v.limits.categories.join(", ")} · approval &gt; USD {v.limits.approval_above} · {fmtTime(v.created_at)}
+                <strong>v{v.version}</strong> · cap USD {v.limits.monthly_cap} · {v.limits.categories.join(", ")} · approval &gt; USD {v.limits.approval_above}{v.limits.ask_when_unsure ? " · ask when unsure" : ""} · {fmtTime(v.created_at)}
               </li>
             ))}
           </ul>
@@ -152,10 +162,42 @@ function MandateCard({ m }: { m: Mandate }) {
   );
 }
 
+/** Describe the mandate in plain English; the server drafts the limits. Nothing is signed until the form is submitted. */
+function DraftFromText({ onDraft }: { onDraft: (d: MandateDraft) => void }) {
+  const { api } = useStore();
+  const [text, setText] = useState("Groceries only, $200 a month, ask me above $75, and ask me if you are not sure.");
+  const [draft, setDraft] = useState<MandateDraft | null>(null);
+  const act = useAction();
+  return (
+    <div className="sx-draft">
+      <label htmlFor="draft-text"><strong>Describe it in plain English</strong> <span className="muted small">(optional: the agent drafts the form below, you check it and sign)</span></label>
+      <div className="row wrap" style={{ alignItems: "stretch" }}>
+        <input id="draft-text" value={text} onChange={(e) => setText(e.target.value)} style={{ flex: "1 1 320px", width: "auto" }} />
+        <button type="button" className="sx-btn" disabled={act.busy || !text.trim()} onClick={async () => {
+          const d = await act.run(() => api.draftMandate(text.trim()));
+          if (d) { setDraft(d); onDraft(d); }
+        }}>{act.busy ? "Reading…" : "Draft the limits"}</button>
+      </div>
+      {act.error && <Notice kind="error">{act.error}</Notice>}
+      {draft && (
+        <div className={`sx-notice ${draft.missing.length ? "n-warn" : "n-info"}`} role="status">
+          <p><strong>What I read</strong> (check it before you sign):</p>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {draft.notes.map((n) => <li key={n}>{n}</li>)}
+            {draft.missing.map((m) => <li key={m}><strong>Not found:</strong> {m.replace(/_/g, " ")}. Fill it in by hand.</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MandateView() {
   const { mandates, api } = useStore();
   const [label, setLabel] = useState("");
   const [open, setOpen] = useState(false);
+  const [initial, setInitial] = useState({ monthly_cap: "200.00", categories: "groceries", approval_above: "75.00", ask_when_unsure: false });
+  const [formKey, setFormKey] = useState(0);
   const act = useAction();
   return (
     <div className="stack">
@@ -170,13 +212,24 @@ export default function MandateView() {
         {open && (
           <div className="sx-sub">
             <h3>Create mandate</h3>
+            <DraftFromText onDraft={(d) => {
+              setLabel(d.label);
+              setInitial({
+                monthly_cap: d.limits.monthly_cap ?? "",
+                categories: d.limits.categories.join(", "),
+                approval_above: d.limits.approval_above ?? "",
+                ask_when_unsure: d.limits.ask_when_unsure,
+              });
+              setFormKey((k) => k + 1); // remount the form with the drafted values
+            }} />
             <div className="sx-form">
               <label htmlFor="new-label">Label</label>
               <input id="new-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Groceries, $200/month" />
             </div>
             <LimitsForm
+              key={formKey}
               idp="new"
-              initial={{ monthly_cap: "200.00", categories: "groceries", approval_above: "75.00" }}
+              initial={initial}
               submitLabel="Create and sign"
               busy={act.busy}
               onSubmit={async (limits) => {

@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServices, type Services } from './app.ts';
 import { loadConfig, type Config } from './config.ts';
 import { REPO_ROOT } from './db.ts';
+import { draftMandate } from './mandate-draft.ts';
 import { RateLimiter } from './ratelimit.ts';
 import { badRequest, HttpError, notFound } from './util.ts';
 
@@ -135,6 +136,14 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       requireAuth(req);
       const b = await readJson(req);
       return sendJson(res, 201, mandates.create({ label: b.label, owner: b.owner, limits: b.limits }));
+    }
+    // A DRAFT only: reads limits from plain English. Nothing is created or signed; the person reviews and signs.
+    if (method === 'POST' && path === '/api/mandates/draft') {
+      const b = await readJson(req);
+      const text = typeof b.text === 'string' ? b.text.trim() : '';
+      if (!text) throw badRequest('text is required');
+      if (text.length > 500) throw badRequest('text must be 500 characters or fewer');
+      return sendJson(res, 200, await draftMandate(text, store.listCatalog(), s.engine));
     }
     if (method === 'GET' && (m = path.match(/^\/api\/mandates\/([\w-]+)$/))) return sendJson(res, 200, mandates.require(m[1]));
     if (method === 'GET' && (m = path.match(/^\/api\/mandates\/([\w-]+)\/versions$/))) return sendJson(res, 200, { versions: mandates.versions(m[1]) });

@@ -283,3 +283,9 @@
 
 .sx-map svg { max-width: 100%; }
 .sx-panel, .sx-doc, .sx-stat, .sx-pick { min-width: 0; }
+
+.sx-draft { display: grid; gap: 8px; margin: 6px 0 14px; padding: 12px 14px; border: 1.5px dashed var(--ink); border-radius: 10px; background: var(--card); }
+.sx-draft label { font-size: .92rem; }
+.sx .lbl-bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--green); vertical-align: middle; margin-right: 6px; }
+.sx .lbl-bar.dim { background: #b9ad95; }
+.sx-trace { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }

@@ -19,6 +19,18 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **Group C engine upgrades (2026-11-11, uncommitted):** `src/server/engine.ts` decide() now has: concept map
+  (`EXPANSIONS`, concept words also scored alone at 0.9), trace in evidence `data.agent` (scores, confidence,
+  expansions, substitution, preference, injection), clarify question (`CONFIDENT 0.50`, `CLARIFY_GAP 0.05`,
+  `WIDE_TIE_MAX 0.60`; evidence decision `clarify`, `AgentResult.choices`), substitution (`SUB_GAP 0.15`, over budget or
+  wrong category), "the usual" + prefer-bought-before (history = completed in-mandate purchases), injection flag
+  (`detectInjection`, all modes). Mandate clause `limits.ask_when_unsure` (stored only when true) -> checker reason
+  `low_match_confidence`. New `src/server/mandate-draft.ts` + `POST /api/mandates/draft` (rules + engine for
+  categories; lists missing values). UI: draft box + checkbox + §4 clause (MandateView), answer buttons
+  (LedgerView), score bars + "How it decided" chips (EvidenceView). Bench: `npm run bench:engine -- <model>`
+  (`scripts/engine-bench.ts`, sets in `tests/helpers/engine-cases.ts`). MiniLM: tuning 18/18, held-out 14/15,
+  negatives refused 6/6; bge-small and gte-small refuse 0/6, so MiniLM stays. `npm test` 47 pass, e2e 4 pass 1 skipped.
+  README + `docs/api-contract.md` updated. Sandbox checked 2026-11-11: refunds work (partial + full, idempotent, over-refund 422) and authorize/void works; probe scripts were in the scratchpad, results in the plan. Group B plan: `hackathon-notes/group-b-plan.md` (B7, B1, B2 first).
 - **Console UI rebuilt (2026-11-11, uncommitted):** direction "The Leash + Notary". New `src/ui/app/console.css` (scoped under `.sx`, landing untouched),
   left-rail `Shell.tsx`, new `FenceView.tsx` (SVG map: cap ring, approval ring, hatched outside band, one dot per purchase), mandates as signed documents,
   ledger as receipts with a Table (AG Grid, themed) toggle, evidence as a chain that turns green on verify, disputes as case list + dossier with verdict stamp.

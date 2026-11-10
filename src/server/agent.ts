@@ -2,7 +2,8 @@
 // Tools: search_catalog, get_mandate, select_item. None touches PayPal. The mandate checker (checker.ts),
 // not the model, decides whether a selection is within the mandate, and every decision is recorded as evidence.
 import type { Config } from './config.ts';
-import type { SemanticEngine } from './engine.ts';
+import type { EngineTrace, SemanticEngine } from './engine.ts';
+import { detectInjection } from './engine.ts';
 import type { EvidenceLog } from './evidence.ts';
 import type { Gate, SelectionOutcome } from './gate.ts';
 import type { MandateService } from './mandates.ts';
@@ -15,10 +16,14 @@ interface Pick {
   item: CatalogItem;
   rationale: string;
   options: CatalogItem[];
+  trace?: EngineTrace;
 }
-interface NoMatch { kind: 'no_match'; options: CatalogItem[]; text: string }
-interface NeedsInfo { kind: 'needs_info'; text: string }
-type Decision = Pick | NoMatch | NeedsInfo;
+interface NoMatch { kind: 'no_match'; options: CatalogItem[]; text: string; trace?: EngineTrace }
+interface NeedsInfo { kind: 'needs_info'; text: string; trace?: EngineTrace }
+interface Clarify { kind: 'clarify'; text: string; choices: CatalogItem[]; options: CatalogItem[]; trace: EngineTrace }
+type Decision = Pick | NoMatch | NeedsInfo | Clarify;
+
+const toOpt = (i: CatalogItem) => ({ sku: i.sku, name: i.name, category: i.category, price: i.price.value });
 
 const STOP = new Set(['a', 'an', 'the', 'some', 'any', 'for', 'of', 'to', 'my', 'me', 'and', 'please', 'buy', 'purchase', 'get', 'order', 'restock', 'sku', 'under', 'max']);
 
@@ -51,21 +56,38 @@ export class ShoppingAgent {
         ? await this.decideEngine(input.text, mandate, rogue)
         : await this.decideLive(input.text, mandate, rogue);
 
+    // The engine records how it decided. For the other modes, still flag an instruction that tried to override the rules.
+    const injection = detectInjection(input.text);
+    const trace: Record<string, unknown> | undefined = ('trace' in decision && decision.trace)
+      ? { ...decision.trace }
+      : injection.length ? { mode: this.cfg.agentMode, injection } : undefined;
+
     let result: AgentResult;
     if (decision.kind === 'selected') {
       const out: SelectionOutcome = await this.gate.proposeSelection({
         request_id: requestId, mandate, instruction: input.text, options_seen: decision.options, item: decision.item,
-        rationale: decision.rationale, demo_rogue: rogue,
+        rationale: decision.rationale, demo_rogue: rogue, trace, low_confidence: decision.trace?.low_confidence === true,
       });
       result = { request_id: requestId, outcome: out.outcome, reply: out.reply, purchase: out.purchase, approval: out.approval, evidence_record_id: out.evidence.record_id };
     } else if (decision.kind === 'no_match') {
       const spent = this.store.spentMoney(mandate.id);
       const ev = this.evidence.append({
         decision: 'no_match', mandate: this.mandates.snapshot(mandate), user_instruction: input.text,
-        options_seen: decision.options.map((i) => ({ sku: i.sku, name: i.name, category: i.category, price: i.price.value })),
+        options_seen: decision.options.map(toOpt),
         choice: null, rationale: decision.text, budget_before: spent, budget_after: spent, demo_rogue: rogue,
+        data: trace ? { agent: trace } : {},
       });
       result = { request_id: requestId, outcome: 'no_match', reply: decision.text, purchase: null, approval: null, evidence_record_id: ev.record_id };
+    } else if (decision.kind === 'clarify') {
+      // Nothing is bought: the question and the candidates are recorded, and the user answers by picking one.
+      const spent = this.store.spentMoney(mandate.id);
+      const ev = this.evidence.append({
+        decision: 'clarify', mandate: this.mandates.snapshot(mandate), user_instruction: input.text,
+        options_seen: decision.options.map(toOpt), choice: null, rationale: decision.text,
+        budget_before: spent, budget_after: spent, demo_rogue: rogue, data: { agent: trace, choices: decision.choices.map((c) => c.sku) },
+      });
+      result = { request_id: requestId, outcome: 'needs_info', reply: decision.text, purchase: null, approval: null,
+        evidence_record_id: ev.record_id, choices: decision.choices.map(toOpt) };
     } else {
       result = { request_id: requestId, outcome: 'needs_info', reply: decision.text, purchase: null, approval: null, evidence_record_id: null };
     }
@@ -80,7 +102,14 @@ export class ShoppingAgent {
   // ---------- engine mode: on-server semantic engine, no external AI ----------
   private async decideEngine(text: string, mandate: Mandate, rogue: boolean): Promise<Decision> {
     if (!this.engine) throw new Error('AGENT_MODE=engine but no engine was created');
-    return this.engine.decide({ text, items: this.store.listCatalog(), allowedCategories: mandate.limits.categories, rogue });
+    // Context for the engine: what is left this month, and what was bought before on this mandate.
+    const history = this.store.listPurchases({ mandate_id: mandate.id })
+      .filter((p) => p.status === 'completed' && p.within_mandate && !p.demo_rogue)
+      .map((p) => ({ sku: p.sku, at: p.completed_at ?? p.created_at }));
+    return this.engine.decide({
+      text, items: this.store.listCatalog(), allowedCategories: mandate.limits.categories, rogue,
+      remainingCents: toCents(mandate.budget.remaining), history,
+    });
   }
 
   // ---------- mock mode: deterministic (contract section 7) ----------

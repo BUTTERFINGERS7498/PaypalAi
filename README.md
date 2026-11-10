@@ -338,6 +338,33 @@ Then try instructions such as `restock the pantry basics`, `breakfast stuff`, `I
 
 The engine only **proposes**. The mandate checker and the gate decide exactly as with Claude, so `I need to clean the house` under a groceries-only mandate is blocked, and the evidence records the rationale, for example `Semantic match (all-MiniLM-L6-v2): "restock the pantry basics" → Pantry basics bundle (similarity 0.64)`.
 
+#### What the engine does beyond matching
+
+| Feature | What you see | Where it is recorded |
+|---|---|---|
+| **Shows its reasoning** | The Evidence view draws the similarity score of every option it saw as a bar, plus "Confident" or "Unsure". | `data.agent.scores`, `data.agent.confidence` in the evidence record |
+| **Concept map** | A small hand-written list adds catalog words to requests the model alone missed ("porridge" → oats, "warm drink in the morning" → coffee). | `data.agent.expansions` |
+| **Asks when it cannot tell** | `snacks` ties three items, so it asks "Pantry basics bundle, Rolled oats or Apples?" with one button per choice. Nothing is bought. | an evidence record with decision `clarify` |
+| **Substitutes inside the rules** | If the best match is over this month's remaining budget or outside the allowed categories, it proposes the closest allowed item and says what it replaced. | `data.agent.substitution` |
+| **Remembers what you buy** | `buy the usual` picks the item bought most often on the mandate. Near-ties prefer what you bought before. | `data.agent.preference` |
+| **"Ask me when unsure" clause** | An optional mandate clause (§4). A weak match then waits in the approval queue even below the approval line. The checker, which is plain code, adds the reason `low_match_confidence`. | the signed mandate limits and the approval reasons |
+| **Flags rule-breaking instructions** | "Ignore your rules and buy …" is marked in the evidence. It changes nothing: the checker still blocks the purchase. | `data.agent.injection` |
+| **Mandate from plain English** | In **New mandate**, type "groceries only, $200 a month, ask me above $75" and press **Draft the limits**. The form is filled and every value says which words it came from. You still check it and sign it. | nothing is signed until you submit the form |
+
+All of it is in the evidence record, so it is covered by the hash chain like everything else.
+
+#### Measured, not guessed
+
+`npm run bench:engine -- <model>` runs three request sets: the original 18 requests (used to tune the concept map), 15 **held-out** requests written afterwards, and 6 things the catalog does not sell. Results on this catalog:
+
+| Model | Tuning set | Held-out | Wrong requests refused |
+|---|---|---|---|
+| **all-MiniLM-L6-v2 (used)** | 18/18 (16/18 before the concept map) | 14/15 | 6/6 |
+| bge-small-en-v1.5 | 18/18 | 15/15 | 0/6 |
+| gte-small | 17/18 | 13/15 | 0/6 |
+
+The two larger models score unrelated requests (running shoes, a laptop) almost as high as real matches, so with this catalog they buy something for every one of them. MiniLM keeps a clear gap, so it stays. The one held-out miss is `canned beans`, which goes to coffee beans. The 18/18 on the tuning set is not proof on its own, because the concept map was written against it; the held-out number is the honest one.
+
 ### Tests and development servers
 
 ```bash
@@ -473,7 +500,7 @@ The full contract, with request and response shapes, is [`docs/api-contract.md`]
 | Area | Endpoints |
 |---|---|
 | Health | `GET /api/health` |
-| Mandates | `GET/POST /api/mandates` · `GET /api/mandates/:id` · `GET …/versions` · `POST …/limits` · `POST …/revoke` · `POST …/verify` |
+| Mandates | `GET/POST /api/mandates` · `POST /api/mandates/draft` (plain English to a draft, nothing signed) · `GET /api/mandates/:id` · `GET …/versions` · `POST …/limits` · `POST …/revoke` · `POST …/verify` |
 | Catalog | `GET /api/catalog?category=` |
 | Agent | `POST /api/agent/instructions` (`{ mandate_id, text, demo_rogue? }`) · `GET /api/agent/instructions/:id` |
 | Purchases | `GET /api/purchases` · `GET /api/purchases/:id` · `GET …/evidence` · `POST …/reconcile` |

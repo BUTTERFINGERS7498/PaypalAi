@@ -6,6 +6,10 @@ Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-r
 ## Breaking changes
 _Newest first. Every breaking change gets a dated line here._
 
+- 2026-11-11 (additive, not breaking) — engine upgrades: optional mandate clause `limits.ask_when_unsure`
+  (stored only when `true`, so existing signatures are unchanged) and approval reason `low_match_confidence`;
+  evidence `decision` gains `clarify`; agent replies may carry `choices`; evidence `data.agent` holds the engine
+  trace; new `POST /api/mandates/draft`.
 - 2026-11-08 — v0.1 initial contract. Nothing to migrate.
 - 2026-11-08 (additive, not breaking) — evidence `decision` gains `order_failed`.
 - 2026-11-08 (**breaking for clients of a deployment that sets `APPROVAL_TOKEN`**) — `POST /api/agent/instructions` and `POST /api/purchases/:id/reconcile` now require the bearer token, and both are rate limited (new error `rate_limited` 429, new env `AGENT_RATE_LIMIT_PER_HOUR`, `AGENT_DAILY_LIMIT`). Deployments without `APPROVAL_TOKEN` (local dev) still accept them unauthenticated. The console already sends the approval password on every request.
@@ -125,6 +129,8 @@ deterministic. In-memory and per process (they reset on restart).
 ```
 - Limits are optional only where noted: `monthly_cap`, `categories` (non-empty) and `approval_above`
   are required. `approval_above` ≤ `monthly_cap`.
+- Optional `ask_when_unsure: true`: a pick the agent itself marks as unsure waits for a human (reason
+  `low_match_confidence`), even below `approval_above`. Absent means off; `false` is not stored.
 - **Versioning:** any change to `limits` creates a new `version` (old versions are retained
   immutably). Evidence always cites `id` + `version` + that version's `signature`.
 - **Signing payload (canonical JSON, keys sorted, no whitespace):**
@@ -213,7 +219,11 @@ queued, except in rogue demo mode (§6).
 ```
 - `decision` ∈ `selected` (agent chose an item) · `needs_approval` · `blocked` · `no_match` ·
   `approved` · `rejected` (human) · `order_created` · `order_failed` (PayPal refused the order or
-  capture; `data.error`) · `captured` · `mandate_revoked`.
+  capture; `data.error`) · `captured` · `mandate_revoked` · `clarify` (the agent asked which of
+  `data.choices` was meant; nothing bought).
+- Agent decisions in engine mode carry `data.agent`: `{ mode, backend, model, query, expansions[], scores[{sku,score}],
+  confidence, low_confidence, substitution?, preference?, injection? }`. Other modes add `data.agent.injection`
+  only when the instruction tried to override the rules.
   The first four are agent decisions and carry the full snapshot above. The later ones carry
   `purchase_id`/`paypal_order_id` and the mandate snapshot but may leave `options_seen: []`,
   `choice: null`, and put specifics in `data` (e.g. `{ "approval_id", "decided_by" }`,
@@ -277,6 +287,9 @@ With `AGENT_MODE=engine` it also carries `"engine": { "state": "ready", "backend
 ### Mandates
 - `GET /api/mandates` → `{ "mandates": [Mandate] }` (current version of each; newest first)
 - `POST /api/mandates` body `{ "label", "owner"?, "limits": { "monthly_cap", "categories", "approval_above" } }` → `201 Mandate` (signed, version 1)
+- `POST /api/mandates/draft` body `{ "text": "groceries only, $200 a month, ask me above $75" }` → `200
+  { "label", "limits": { "monthly_cap"|null, "categories", "approval_above"|null, "ask_when_unsure" }, "notes": [..],
+  "missing": [..], "excluded": [..] }`. A draft only: nothing is created or signed. No auth (read-only).
 - `GET /api/mandates/:id` → `Mandate`; `GET /api/mandates/:id/versions` → `{ "versions": [Mandate] }`
 - `POST /api/mandates/:id/limits` body `{ "monthly_cap"?, "categories"?, "approval_above"? }` → `200 Mandate` (new version)
 - `POST /api/mandates/:id/revoke` → `200 Mandate` (`status: revoked`); appends a `mandate_revoked` evidence record.
@@ -306,7 +319,8 @@ With `AGENT_MODE=engine` it also carries `"engine": { "state": "ready", "backend
 `outcome`: `purchased` (completed) · `awaiting_payer` (order created, buyer must approve at
 `purchase.approve_url`) · `needs_approval` (`approval` set, nothing charged) · `blocked` (the checker
 refused the choice; `reply` explains; no purchase) · `no_match` (nothing suitable in the catalog) ·
-`needs_info` (ambiguous instruction; a question in `reply`) · `failed` (the order could not be
+`needs_info` (ambiguous instruction; a question in `reply`, and `choices: [{sku,name,category,price}]` when the
+engine could not decide between catalog items) · `failed` (the order could not be
 created; `purchase.status: failed`, reason in the evidence `order_failed` record).
 - Tools: `search_catalog`, `get_mandate`, `select_item`. **None touches PayPal.** The server runs the
   checker on `select_item`, writes the evidence record, then (outcome-dependent) the gate creates
@@ -427,7 +441,14 @@ generates no free text: rationales are templated from the match. Implemented in 
    `Semantic match (all-MiniLM-L6-v2): "restock the pantry basics" → Pantry basics bundle (similarity 0.64); best
    match; in an allowed category.` and `options_seen` lists the top candidates.
 5. Dispute narratives in this mode use the deterministic template (no language model).
-Calibration (similarity threshold, tie width) comes from the 14-item demo catalog and a small hand-written test set.
+6. **Upgrades (2026-11-11):** a hand-written concept map adds catalog words to the search ("porridge" → oats), and the
+   added words are also scored alone at 0.9 weight; `"the usual"` picks the item bought most often on the mandate;
+   near-ties prefer previously bought items; if the pick is outside the allowed categories or over the remaining
+   budget, the best allowed item within `0.15` similarity is substituted; below `0.50` (or with a three-way tie below
+   `0.60`) between allowed items within `0.05`, the engine asks (`clarify`); below `0.50` the pick is marked
+   `low_confidence`. All of it is recorded in `data.agent`.
+Calibration (similarity threshold, tie width) comes from the 14-item demo catalog and a small hand-written test set;
+`npm run bench:engine` reports the tuning set, a held-out set and refusals.
 
 ### 7b. `AGENT_MODE=mock` (deterministic, for tests)
 
@@ -443,6 +464,8 @@ For a candidate `price` against the **current active version**, with `spent` thi
 2. `category` ∉ `limits.categories` → breach `category_not_allowed`.
 3. `spent + price > monthly_cap` → breach `exceeds_monthly_cap`.
 4. `price > approval_above` and no breach → reason `above_approval_threshold` (needs human approval).
+5. `limits.ask_when_unsure` and the agent marked the pick `low_confidence`, and no breach → reason
+   `low_match_confidence` (needs human approval). The flag is an input; the checker stays plain code.
 `within_mandate = (breaches.length === 0)`.
 
 ## 9. Database tables (platform implements in `db/schema.sql`)

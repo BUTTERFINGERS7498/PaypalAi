@@ -10,6 +10,8 @@ export interface Limits {
   monthly_cap: string;
   categories: string[];
   approval_above: string;
+  /** Optional clause: when the agent is unsure what you meant, ask a human first. */
+  ask_when_unsure?: boolean;
 }
 
 export interface Mandate {
@@ -79,7 +81,8 @@ export type Decision =
   | "rejected"
   | "order_created"
   | "captured"
-  | "mandate_revoked";
+  | "mandate_revoked"
+  | "clarify";
 
 export interface EvidenceRecord {
   record_id: string;
@@ -144,6 +147,31 @@ export interface AgentResult {
   purchase: Purchase | null;
   approval: Approval | null;
   evidence_record_id: string | null;
+  /** Only when the agent asked a clarifying question: the items it could not decide between. */
+  choices?: { sku: string; name: string; category: string; price: string }[];
+}
+
+/** How the on-server engine reached a choice (stored in evidence.data.agent). Every field is optional. */
+export interface AgentTrace {
+  mode?: string;
+  backend?: "embeddings" | "keyword" | "rule";
+  model?: string;
+  query?: string;
+  expansions?: string[];
+  scores?: { sku: string; score: number }[];
+  confidence?: number | null;
+  low_confidence?: boolean;
+  substitution?: { wanted_sku: string; wanted_name: string; reason: "category_not_allowed" | "over_remaining_budget" };
+  preference?: { sku: string; times: number; last: string };
+  injection?: string[];
+}
+
+export interface MandateDraft {
+  label: string;
+  limits: { monthly_cap: string | null; categories: string[]; approval_above: string | null; ask_when_unsure: boolean };
+  notes: string[];
+  missing: ("monthly_cap" | "categories" | "approval_above")[];
+  excluded: string[];
 }
 
 export interface VerifyResult {
@@ -195,6 +223,7 @@ export interface Api {
   listMandates(): Promise<Mandate[]>;
   mandateVersions(id: string): Promise<Mandate[]>;
   createMandate(b: { label: string; limits: Limits }): Promise<Mandate>;
+  draftMandate(text: string): Promise<MandateDraft>;
   updateLimits(id: string, b: Partial<Limits>): Promise<Mandate>;
   revokeMandate(id: string): Promise<Mandate>;
   verifyMandate(id: string, version?: number): Promise<VerifyResult>;

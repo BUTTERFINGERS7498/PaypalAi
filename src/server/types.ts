@@ -10,6 +10,9 @@ export interface Limits {
   monthly_cap: string;
   categories: string[];
   approval_above: string;
+  /** Optional clause: when the agent is unsure what you meant, ask a human first. Only stored when true, so mandates
+   *  signed before this clause existed keep exactly the same signed payload. */
+  ask_when_unsure?: boolean;
 }
 
 export interface MandateSignature {
@@ -82,7 +85,7 @@ export interface Approval {
 
 export type EvidenceDecision =
   | 'selected' | 'needs_approval' | 'blocked' | 'no_match' | 'approved' | 'rejected'
-  | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked';
+  | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked' | 'clarify';
 
 export interface EvidenceOption {
   sku: string;
@@ -154,6 +157,13 @@ export interface WebhookEventRecord {
 
 export type AgentOutcome = 'purchased' | 'awaiting_payer' | 'needs_approval' | 'blocked' | 'no_match' | 'needs_info' | 'failed';
 
+export interface AgentChoice {
+  sku: string;
+  name: string;
+  category: string;
+  price: string;
+}
+
 export interface AgentResult {
   request_id: string;
   outcome: AgentOutcome;
@@ -161,4 +171,6 @@ export interface AgentResult {
   purchase: Purchase | null;
   approval: Approval | null;
   evidence_record_id: string | null;
+  /** Only when the agent asked a clarifying question: the items it could not decide between. */
+  choices?: AgentChoice[];
 }

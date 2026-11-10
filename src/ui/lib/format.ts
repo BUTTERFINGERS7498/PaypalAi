@@ -37,4 +37,11 @@ export const DECISION_LABEL: Record<string, string> = {
   order_created: "PayPal sandbox order created",
   captured: "Payment captured",
   mandate_revoked: "Mandate revoked",
+  clarify: "Agent asked a question",
 };
+
+export const REASON_LABEL: Record<string, string> = {
+  above_approval_threshold: "above the approval line",
+  low_match_confidence: "the agent was not sure this is what you meant",
+};
+export const reasonLabel = (r: string) => REASON_LABEL[r] ?? r.replace(/_/g, " ");
