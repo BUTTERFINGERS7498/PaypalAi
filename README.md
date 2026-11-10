@@ -12,11 +12,12 @@
 
 ### 🎥 Watch the demo
 
-[**▶ Watch the 3-minute narrated demo (MP4)**](demo/sentry-demo-3min.mp4) · [the problem and the fix](#-the-problem-and-the-fix) · [or jump to each action](#-see-it-in-action)
+<a href="https://youtu.be/yipzf57PUYU"><img src="demo/thumbnail.png" alt="Watch the Sentry demo on YouTube: an AI agent breaks its spending mandate, Sentry records the breach and refunds the buyer through PayPal" width="640" /></a>
+
+[**▶ Watch the demo on YouTube (2:34)**](https://youtu.be/yipzf57PUYU) · [download the MP4](demo/sentry-demo-3min.mp4) · [the problem and the fix](#-the-problem-and-the-fix) · [or jump to each action](#-see-it-in-action)
 
 <sub>The voice-over is a synthetic neural voice (Microsoft Edge TTS, "Andrew"), not a human recording. The narration script is in <a href="demo/cut/narration-v2.txt">demo/cut/narration-v2.txt</a>. The demo was filmed against the <b>mock</b> PayPal client (so the refund in it says "mock PayPal: no real call"); the same flows were run separately against the real PayPal sandbox, see <a href="#-what-is-real-and-what-is-simulated">what is real</a>.</sub>
 
-<!-- TODO before submitting: upload demo/sentry-demo-3min.mp4 to YouTube (public) and put that link here. -->
 
 </div>
 
@@ -42,7 +43,7 @@ Sentry gives the agent a **signed permission slip** (a mandate), a **strict chec
 
 ## 🎬 See it in action
 
-Short clips of the real console. The full narrated cut is **[the 3-minute demo](demo/sentry-demo-3min.mp4)**.
+Short clips of the real console. The full narrated cut is **[the demo on YouTube](https://youtu.be/yipzf57PUYU)** (also as an [MP4](demo/sentry-demo-3min.mp4)).
 
 ### 1. Sign a mandate
 
@@ -88,7 +89,7 @@ On an in-mandate purchase the same process gives **DEFENSIBLE**: provide the evi
 
 > **How these were recorded, honestly.** They were filmed on a local run with the **mock PayPal client** and the on-server semantic engine, so nothing in them touches PayPal. The step where the buyer approves at PayPal is stood in for by posting the same `CHECKOUT.ORDER.APPROVED` webhook PayPal would send (`demo/approve-orders.mjs`). Disputes are the labelled **simulated** ones. The real PayPal sandbox path is described in [Run it against the real PayPal sandbox](#-run-it-against-the-real-paypal-sandbox).
 >
-> **The GIFs are older than the video.** The GIFs above were made when the seeded approval line was $75 and before the newer features; the [3-minute demo](demo/sentry-demo-3min.mp4) shows the current product: plain-English mandate, the agent's clarifying question, the hold and capture, the breach refund and the merchant view.
+> **The GIFs are older than the video.** The GIFs above were made when the seeded approval line was $75 and before the newer features; the [demo video](https://youtu.be/yipzf57PUYU) shows the current product: plain-English mandate, the agent's clarifying question, the hold and capture, the breach refund and the merchant view.
 >
 > **Re-make them:** the video is two scenario files in [`demo/cut/`](demo/cut): `intro.json` (an animated HTML intro, `intro.html`) and `demo-v2.json`, recorded with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) against a server run with `PAYPAL_MODE=mock CHECKOUT_MODE=card APPROVAL_HOLD=authorize AGENT_MODE=engine`, and joined with ffmpeg. The GIFs above were cut from the older `part-a.json` / `part-b.json` recordings.
 

@@ -19,6 +19,8 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **Demo on YouTube (2026-11-11):** https://youtu.be/yipzf57PUYU (public, uploaded by the human). README links it in 4 places, with
+  `demo/thumbnail.png` (made from `demo/thumbnail.html`, 1280x720) as a clickable image; the MP4 stays as a download.
 - **Demo video re-filmed with the new features (2026-11-11, uncommitted):** `demo/sentry-demo-3min.mp4` = intro (24.4 s) +
   `demo/cut/demo-v2.json` (125.1 s) = 149.6 s, captions on, voice "Andrew" (`demo/cut/voice2/`, `narration-v2.txt`). Story:
   plain-English mandate -> "snacks" question -> oats -> pantry held + approve and capture -> rogue -> fence -> verify chain ->

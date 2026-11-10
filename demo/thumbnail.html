@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sentry thumbnail</title>
+<style>
+  :root { --paper: #f4efe5; --card: #fffdf8; --ink: #17130f; --muted: #5a5144; --wax: #a3221a; --green: #1c6a44; --blue: #243a86; --gold: #e9c46a;
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", serif; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 720px; overflow: hidden; }
+  body { background: radial-gradient(900px 560px at 92% -8%, rgba(233,196,106,.55), transparent 62%), radial-gradient(700px 500px at -10% 110%, rgba(163,34,26,.10), transparent 60%), var(--paper);
+    font-family: system-ui, "Segoe UI", sans-serif; color: var(--ink); position: relative; }
+  .frame { position: absolute; inset: 22px; border: 3px solid var(--ink); border-radius: 18px; }
+  .left { position: absolute; left: 70px; top: 70px; width: 640px; }
+  .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 34px; }
+  .seal { width: 74px; height: 74px; border-radius: 50%; background: var(--ink); color: var(--gold); border: 4px solid #b78a1e; display: grid; place-items: center;
+    font-family: var(--serif); font-weight: 700; font-size: 42px; position: relative; }
+  .seal::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; border: 2px dashed rgba(233,196,106,.7); }
+  .word { font-family: var(--serif); font-weight: 700; font-size: 46px; letter-spacing: -.02em; }
+  h1 { font-family: var(--serif); font-weight: 700; font-size: 96px; line-height: .98; letter-spacing: -.035em; }
+  h1 em { font-style: italic; color: var(--wax); }
+  .sub { margin-top: 30px; font-family: var(--mono); font-size: 25px; letter-spacing: .03em; color: var(--ink); display: flex; gap: 14px; flex-wrap: wrap; }
+  .sub span { background: var(--card); border: 2.5px solid var(--ink); border-radius: 10px; padding: 6px 14px; box-shadow: 4px 4px 0 var(--ink); font-weight: 700; }
+  .right { position: absolute; right: 40px; top: 40px; width: 520px; height: 640px; }
+  .right svg { position: absolute; left: 0; top: 30px; }
+  .stamp { position: absolute; font-family: var(--mono); font-weight: 900; text-transform: uppercase; letter-spacing: .12em; border: 7px solid currentColor;
+    border-radius: 10px; padding: 8px 22px; background: rgba(255,253,248,.88); white-space: nowrap; }
+  .breach { color: var(--wax); font-size: 46px; right: 10px; top: 54px; transform: rotate(-8deg); }
+  .refunded { color: var(--blue); font-size: 54px; right: 70px; bottom: 34px; transform: rotate(5deg); }
+  .chip { position: absolute; left: 70px; bottom: 58px; font-family: var(--mono); font-weight: 800; font-size: 22px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--blue); background: #dfe6f8; border: 2.5px solid #aebbe6; border-radius: 999px; padding: 8px 20px; }
+</style>
+</head>
+<body>
+  <div class="frame"></div>
+
+  <div class="left">
+    <div class="brand"><span class="seal">S</span><span class="word">Sentry</span></div>
+    <h1>Your AI agent <em>broke the rules?</em></h1>
+    <div class="sub"><span>Signed mandate</span><span>Evidence chain</span><span>PayPal refund</span></div>
+  </div>
+
+  <div class="right">
+    <svg width="520" height="560" viewBox="0 0 520 560" aria-hidden="true">
+      <defs>
+        <pattern id="h" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="12" height="12" fill="rgba(163,34,26,.06)" />
+          <line x1="0" y1="0" x2="0" y2="12" stroke="rgba(163,34,26,.30)" stroke-width="3" />
+        </pattern>
+      </defs>
+      <circle cx="260" cy="290" r="235" fill="url(#h)" />
+      <circle cx="260" cy="290" r="165" fill="#e6ece2" stroke="#1c6a44" stroke-width="7" />
+      <circle cx="260" cy="290" r="108" fill="#d9e6d9" stroke="#1c6a44" stroke-width="4" stroke-dasharray="12 10" />
+      <circle cx="222" cy="330" r="17" fill="#1c6a44" stroke="#fffdf8" stroke-width="5" />
+      <circle cx="300" cy="250" r="17" fill="#1c6a44" stroke="#fffdf8" stroke-width="5" />
+      <circle cx="320" cy="345" r="17" fill="#1c6a44" stroke="#fffdf8" stroke-width="5" />
+      <circle cx="96" cy="150" r="44" fill="none" stroke="#a3221a" stroke-width="5" opacity=".45" />
+      <circle cx="96" cy="150" r="26" fill="#a3221a" stroke="#fffdf8" stroke-width="6" />
+    </svg>
+    <span class="stamp breach">Mandate breach</span>
+    <span class="stamp refunded">Refunded</span>
+  </div>
+
+  <span class="chip">PayPal sandbox · AI agent demo</span>
+</body>
+</html>
