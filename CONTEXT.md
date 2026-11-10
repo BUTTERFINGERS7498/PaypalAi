@@ -19,6 +19,21 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **Demo video re-filmed with the new features (2026-11-11, uncommitted):** `demo/sentry-demo-3min.mp4` = intro (24.4 s) +
+  `demo/cut/demo-v2.json` (125.1 s) = 149.6 s, captions on, voice "Andrew" (`demo/cut/voice2/`, `narration-v2.txt`). Story:
+  plain-English mandate -> "snacks" question -> oats -> pantry held + approve and capture -> rogue -> fence -> verify chain ->
+  breach -> refund -> merchant view -> end. Recorded on mock PayPal (card + hold + engine). Fixed while filming: UI budget was
+  stale after purchases (store now reloads mandates on purchase.updated). Also fixed 3 security-review findings on payouts
+  (no payout on top of a pending/partial/successful refund; credit once + per-dispute lock; reversal takes the credit back);
+  `npm test` 86 pass. README GIFs/screenshots still show older flows (noted in README).
+  **Smoothness pass:** final video re-rendered at 60 fps (intro + demo, `output.fps: 60`, demo take at `scale: 1.5`), joined with
+  libx264 `-g 120` (keyframe every 2 s). Measured: 149.8 s, 8,987 frames, every gap 16.67 ms; in motion ~86% of frames are new
+  (the 24 fps cut had 42 ms repeats); recorder capture is on-change and had only 5 pauses > 100 ms in the whole take.
+  **Framing fix (user report: narration about the drafted limits played while zoomed on the button):** `demo-v2.json` now
+  separates acting from explaining: every click has `"zoom": false` and no narration; each sentence plays over a `zoomTo` of
+  what it describes (`.sx-draft`, the agent notice, `.sx-approval`, `.sx-rogue`, `.sx-map`, the evidence panel,
+  `.sx-verdict.bad`/`.ok`, `.sx-rcpts`); `style.maxZoom` 1.5. Checked one frame from the middle of every narrated sentence.
+  Final: 154.5 s, 60 fps, 9,268 frames, keyframe every 2 s.
 - **Group B finished (2026-11-11, uncommitted):** B7 timeline (`store.listWebhooksForPurchase`, route, EvidenceView strip), B6
   PayPal JS SDK button (`PayPalButton.tsx`, health `paypal_client_id`, UI `reconcilePurchase`), B4 partial disputes
   (`simulate(..., amount)`, purchase `refunded_value` column + spend = amount - refunded, `recordRefund` rewritten), B5 payouts

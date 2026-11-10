@@ -68,6 +68,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tab, setTab] = useState<TabId>("fence");
   const [focusPurchase, setFocus] = useState<string | null>(null);
   const alive = useRef(true);
+  // A purchase changes a mandate's budget (spent / remaining), which the server computes: reload the mandates,
+  // batched so a burst of purchase events makes one request.
+  const budgetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadBudgets = useCallback(() => {
+    if (budgetTimer.current) clearTimeout(budgetTimer.current);
+    budgetTimer.current = setTimeout(() => {
+      api.listMandates().then((m) => { if (alive.current) setMandates(m); }).catch(() => {});
+    }, 250);
+  }, [api]);
 
   const setToken = useCallback((t: string) => {
     setApprovalToken(t);
@@ -102,6 +111,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       switch (ev.type) {
         case "purchase.updated":
           setPurchases((l) => upsert(l, ev.data));
+          reloadBudgets();
           break;
         case "approval.updated":
           setApprovals((l) =>
@@ -142,7 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       alive.current = false;
       unsub();
     };
-  }, [api, refresh]);
+  }, [api, refresh, reloadBudgets]);
 
   const go = useCallback((t: TabId, purchaseId?: string) => {
     setTab(t);

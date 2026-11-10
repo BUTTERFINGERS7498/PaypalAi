@@ -153,6 +153,8 @@ export interface DisputePayout {
   error: string | null;
   created_at: string;
   checked_at: string;
+  /** true once this payout's amount was added to the purchase's refunded total (credited at most once). */
+  credited?: boolean;
 }
 
 export interface DisputeRefund {

@@ -158,7 +158,24 @@ export class DisputeService {
   }
 
   /** Ask PayPal how the payout ended. A payout that did not reach the buyer reopens the dispute so it can be retried. */
+  /** Dispute ids with a payout check in flight: checks for one dispute never overlap (no double credit). */
+  private checking = new Set<string>();
+
   async checkPayout(id: string): Promise<Dispute> {
+    if (this.checking.has(id)) {
+      const cur = this.store.getDispute(id);
+      if (!cur) throw notFound(`Dispute ${id} not found`);
+      return cur;
+    }
+    this.checking.add(id);
+    try {
+      return await this.checkPayoutOnce(id);
+    } finally {
+      this.checking.delete(id);
+    }
+  }
+
+  private async checkPayoutOnce(id: string): Promise<Dispute> {
     const d = this.store.getDispute(id);
     if (!d) throw notFound(`Dispute ${id} not found`);
     if (!d.packet?.payout) throw invalidState(`Dispute ${id} has no payout`);

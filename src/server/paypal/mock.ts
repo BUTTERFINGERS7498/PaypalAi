@@ -144,6 +144,12 @@ export class MockPaypalClient implements PaypalClient {
     return { payout_batch_id: id, batch_status: 'PENDING' };
   }
 
+  /** Test hook: a payout that succeeded is later returned to the sender (PayPal item status RETURNED). */
+  reversePayout(batchId: string): void {
+    const v = this.payouts.get(batchId);
+    if (v) { v.status = 'SUCCESS'; v.item = 'RETURNED'; v.error = 'RECEIVER_UNREGISTERED'; }
+  }
+
   async getPayout(batchId: string): Promise<{ batch_status: string; item_status: string | null; error: string | null }> {
     const v = this.payouts.get(batchId);
     if (!v) throw new PaypalError(`Mock payout ${batchId} not found`, 404, 'mock-debug-9');

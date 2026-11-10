@@ -655,8 +655,14 @@ export class Gate {
     if (!p) throw notFound(`Purchase ${d.purchase_id} not found`);
     if (p.status === 'refunded') throw invalidState(`Purchase ${p.id} is already refunded`);
     const trail = this.evidence.forPurchase(p.id);
-    const refundFailed = trail.some((e) => e.decision === 'refund_failed' && e.data.dispute_id === d.id);
-    if (p.paypal_capture_id && !refundFailed) throw invalidState('Try the refund first (Accept claim and refund): a payout is only for when a refund is not possible');
+    // Never on top of money already returned: a refund for this dispute that succeeded or is still pending, or any
+    // amount already refunded on the purchase, rules a payout out (the buyer must not be paid twice).
+    if (p.refunded_value && toCents(p.refunded_value) > 0) throw invalidState(`Part of this purchase (${p.refunded_value}) was already refunded: no payout on top of it`);
+    if (packet.refund && !['FAILED', 'CANCELLED'].includes(packet.refund.status)) throw invalidState(`A refund for this dispute is ${packet.refund.status}: no payout on top of it`);
+    const ours = trail.filter((e) => (e.decision === 'refunded' || e.decision === 'refund_failed') && e.data.dispute_id === d.id);
+    if (ours.some((e) => e.decision === 'refunded')) throw invalidState('A refund for this dispute was recorded: no payout on top of it');
+    const lastAttemptFailed = ours.length > 0 && ours[ours.length - 1].decision === 'refund_failed';
+    if (p.paypal_capture_id && !lastAttemptFailed) throw invalidState('Try the refund first (Accept claim and refund): a payout is only for when a refund is not possible');
     if (packet.payout && !PAYOUT_DONE_BAD.has(packet.payout.batch_status)) throw invalidState(`A payout for this dispute already exists (${packet.payout.batch_status})`);
     const email = this.cfg.paypalBuyerEmail.trim();
     if (!email) throw invalidState('No buyer email is configured (PAYPAL_BUYER_EMAIL), so there is nobody to pay');
@@ -697,17 +703,29 @@ export class Gate {
     const spentBefore = this.store.spentMoney(p.mandate_id);
     const success = r.batch_status === 'SUCCESS' && (r.item_status === null || r.item_status === 'SUCCESS');
     const failed = PAYOUT_DONE_BAD.has(r.batch_status) || (r.item_status !== null && PAYOUT_ITEM_BAD.has(r.item_status));
-    if (success && p.status !== 'refunded') {
-      const total = (p.refunded_value ? toCents(p.refunded_value) : 0) + toCents(payout.amount.value);
+    const prev = p.refunded_value ? toCents(p.refunded_value) : 0;
+    const amt = toCents(payout.amount.value);
+    let reversed = false;
+    if (success && !payout.credited) {
+      // Credit this payout exactly once (the flag is stored with the payout in the dispute packet).
+      const total = prev + amt;
       this.store.updatePurchase(p.id, { refunded_value: centsToMoney(total) });
-      if (total >= toCents(p.amount.value)) this.store.transitionPurchase(p.id, p.status, { status: 'refunded' });
+      if (total >= toCents(p.amount.value) && p.status !== 'refunded') this.store.transitionPurchase(p.id, p.status, { status: 'refunded' });
+      next.credited = true;
+    } else if (failed && payout.credited) {
+      // A payout that had succeeded was returned or reversed: take the credit back, and the purchase counts again.
+      const total = Math.max(0, prev - amt);
+      this.store.updatePurchase(p.id, { refunded_value: centsToMoney(total) });
+      if (p.status === 'refunded') this.store.transitionPurchase(p.id, 'refunded', { status: 'disputed' });
+      next.credited = false;
+      reversed = true;
     }
     const after = this.store.getPurchase(p.id)!;
     this.evidence.append({
       decision: failed ? 'payout_failed' : 'paid_out', mandate: this.snapshotFor(after), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
       choice: { sku: p.sku, price: p.amount.value }, budget_before: spentBefore, budget_after: this.store.spentMoney(p.mandate_id),
       within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
-      data: { dispute_id: d.id, payout_batch_id: payout.payout_batch_id, batch_status: r.batch_status, item_status: r.item_status, error: r.error, final: success, receiver: payout.receiver },
+      data: { dispute_id: d.id, payout_batch_id: payout.payout_batch_id, batch_status: r.batch_status, item_status: r.item_status, error: r.error, final: success, reversed, receiver: payout.receiver },
     });
     return next;
   }

@@ -14,7 +14,7 @@
 
 [**▶ Watch the 3-minute narrated demo (MP4)**](demo/sentry-demo-3min.mp4) · [the problem and the fix](#-the-problem-and-the-fix) · [or jump to each action](#-see-it-in-action)
 
-<sub>The voice-over is a synthetic neural voice (Microsoft Edge TTS, "Andrew"), not a human recording. The narration script is in <a href="demo/cut/narration.txt">demo/cut/narration.txt</a>.</sub>
+<sub>The voice-over is a synthetic neural voice (Microsoft Edge TTS, "Andrew"), not a human recording. The narration script is in <a href="demo/cut/narration-v2.txt">demo/cut/narration-v2.txt</a>. The demo was filmed against the <b>mock</b> PayPal client (so the refund in it says "mock PayPal: no real call"); the same flows were run separately against the real PayPal sandbox, see <a href="#-what-is-real-and-what-is-simulated">what is real</a>.</sub>
 
 <!-- TODO before submitting: upload demo/sentry-demo-3min.mp4 to YouTube (public) and put that link here. -->
 
@@ -88,9 +88,9 @@ On an in-mandate purchase the same process gives **DEFENSIBLE**: provide the evi
 
 > **How these were recorded, honestly.** They were filmed on a local run with the **mock PayPal client** and the on-server semantic engine, so nothing in them touches PayPal. The step where the buyer approves at PayPal is stood in for by posting the same `CHECKOUT.ORDER.APPROVED` webhook PayPal would send (`demo/approve-orders.mjs`). Disputes are the labelled **simulated** ones. The real PayPal sandbox path is described in [Run it against the real PayPal sandbox](#-run-it-against-the-real-paypal-sandbox).
 >
-> **Recorded with an earlier seed.** The clips and the video were made when the seeded mandate's approval line was $75. It is now $40, so `restock the pantry basics` ($42) waits in the approval queue instead of checking out at once.
+> **The GIFs are older than the video.** The GIFs above were made when the seeded approval line was $75 and before the newer features; the [3-minute demo](demo/sentry-demo-3min.mp4) shows the current product: plain-English mandate, the agent's clarifying question, the hold and capture, the breach refund and the merchant view.
 >
-> **Re-make them:** the video is three scenario files in [`demo/cut/`](demo/cut): `intro.json` (an animated HTML intro, `intro.html`), `part-a.json` and `part-b.json`, rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) and joined with ffmpeg. The GIFs above are cut from those recordings with ffmpeg.
+> **Re-make them:** the video is two scenario files in [`demo/cut/`](demo/cut): `intro.json` (an animated HTML intro, `intro.html`) and `demo-v2.json`, recorded with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) against a server run with `PAYPAL_MODE=mock CHECKOUT_MODE=card APPROVAL_HOLD=authorize AGENT_MODE=engine`, and joined with ffmpeg. The GIFs above were cut from the older `part-a.json` / `part-b.json` recordings.
 
 ---
 

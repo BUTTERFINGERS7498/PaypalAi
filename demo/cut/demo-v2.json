@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "http://localhost:8099/#home",
+  "scale": 1.5,
+  "style": { "background": "dawn", "frame": "browser", "captions": true, "maxZoom": 1.5 },
+  "voice": { "enabled": true, "language": "en" },
+  "output": { "width": 1280, "height": 720, "fps": 60 },
+  "steps": [
+    { "click": "role=button[name='Open the console']", "zoom": false, "say": "Let us see it work. It starts with a mandate, written in plain English.", "audio": "voice2/01.mp3" },
+    { "click": "role=tab[name='Mandates']", "zoom": false },
+    { "click": "role=button[name='New mandate']", "zoom": false },
+    { "click": "role=button[name='Draft the limits']", "zoom": false },
+    { "wait": "text=What I read" },
+    { "zoomTo": "css=.sx-draft", "say": "Sentry reads the sentence: two hundred dollars a month, groceries only, and ask me above forty dollars. I check it, and sign.", "audio": "voice2/02.mp3" },
+    { "click": "role=button[name='Create and sign']", "zoom": false },
+    { "wait": "text=When the agent is", "hold": 0.3 },
+
+    { "click": "role=tab[name='Purchase ledger']", "zoom": false },
+    { "type": "snacks", "into": "label=Instruction (plain English)", "clear": true },
+    { "click": "role=button[name='Send to agent']", "zoom": false },
+    { "wait": "text=not sure which you mean" },
+    { "zoomTo": "css=section[aria-labelledby='ask-h'] .sx-notice", "say": "When I ask for snacks, the agent is not sure, so it asks instead of guessing.", "audio": "voice2/03.mp3" },
+    { "click": "text=Rolled oats 1kg · $4.50", "zoom": false },
+    { "wait": "text=Bought Rolled oats" },
+    { "zoomTo": "css=section[aria-labelledby='ask-h'] .sx-notice", "say": "I pick the oats, and the checker confirms they fit the mandate.", "audio": "voice2/04.mp3" },
+
+    { "type": "restock the pantry basics", "into": "label=Instruction (plain English)", "clear": true },
+    { "click": "role=button[name='Send to agent']", "zoom": false },
+    { "wait": "text=held at PayPal until you decide" },
+    { "zoomTo": "css=.sx-approval", "say": "The pantry bundle costs forty two dollars, so it waits for me. PayPal only holds the money; nothing is taken yet.", "audio": "voice2/05.mp3" },
+    { "click": "role=button[name='Approve and capture']", "say": "I approve, and Sentry captures the hold.", "audio": "voice2/06.mp3" },
+    { "wait": 1.2 },
+
+    { "scroll": "text=Ask the agent" },
+    { "type": "buy sku ELE-GAME-01", "into": "label=Instruction (plain English)", "clear": true },
+    { "zoomTo": "css=.sx-rogue", "say": "Now the honest part. A labelled demo switch lets the agent break its own rules.", "audio": "voice2/07.mp3" },
+    { "click": "text=Demo: let the agent break its mandate", "zoom": false },
+    { "click": "role=button[name='Send to agent']", "zoom": false },
+    { "wait": "text=Bought Games console", "hold": 0.3 },
+
+    { "click": "role=tab[name='The fence']", "zoom": false },
+    { "zoomTo": "css=.sx-map", "zoom": 1.2, "say": "On the fence, the breach stands out at once.", "audio": "voice2/08.mp3" },
+    { "highlight": "css=.sx-dot.bad", "text": "Outside the mandate", "hold": 0.3 },
+
+    { "click": "role=tab[name='Evidence trail']", "zoom": false },
+    { "click": "role=button[name='Verify whole chain']", "zoom": false },
+    { "wait": "text=Whole chain valid" },
+    { "zoomTo": "css=section[aria-labelledby='evd-h']", "say": "Every decision is a hash-chained record. One click checks the whole chain.", "audio": "voice2/09.mp3" },
+
+    { "click": "role=tab[name='Disputes']", "zoom": false },
+    { "click": "role=button[name='Create simulated dispute']", "zoom": false },
+    { "wait": "role=button[name='Assemble evidence']" },
+    { "click": "role=button[name='Assemble evidence']", "zoom": false },
+    { "wait": "css=.sx-verdict .sx-stamp" },
+    { "zoomTo": "css=.sx-verdict.bad", "say": "When the charge is disputed, code decides the verdict: mandate breach.", "audio": "voice2/10.mp3" },
+    { "click": "role=button[name='Accept claim and refund']", "zoom": false },
+    { "wait": "text=returned to the buyer" },
+    { "zoomTo": "css=.sx-verdict.ok", "say": "So Sentry accepts the claim, and refunds the buyer through PayPal.", "audio": "voice2/11.mp3" },
+
+    { "click": "role=tab[name='Merchant view']", "zoom": false },
+    { "click": "role=button[name='Check all']", "zoom": false },
+    { "wait": "text=Do not ship" },
+    { "zoomTo": "css=.sx-rcpts", "zoom": 1.1, "say": "And the merchant can check the proof before shipping: ship it, or do not ship.", "audio": "voice2/12.mp3" },
+
+    { "goto": "http://localhost:8099/#home", "zoom": false, "say": "Sentry. Signed mandates, honest evidence, and real refunds and holds, on the PayPal sandbox.", "audio": "voice2/13.mp3", "hold": 1.5 }
+  ]
+}

@@ -1,0 +1,13 @@
+01|Let us see it work. It starts with a mandate, written in plain English.
+02|Sentry reads the sentence: two hundred dollars a month, groceries only, and ask me above forty dollars. I check it, and sign.
+03|When I ask for snacks, the agent is not sure, so it asks instead of guessing.
+04|I pick the oats, and the checker confirms they fit the mandate.
+05|The pantry bundle costs forty two dollars, so it waits for me. PayPal only holds the money; nothing is taken yet.
+06|I approve, and Sentry captures the hold.
+07|Now the honest part. A labelled demo switch lets the agent break its own rules.
+08|On the fence, the breach stands out at once.
+09|Every decision is a hash-chained record. One click checks the whole chain.
+10|When the charge is disputed, code decides the verdict: mandate breach.
+11|So Sentry accepts the claim, and refunds the buyer through PayPal.
+12|And the merchant can check the proof before shipping: ship it, or do not ship.
+13|Sentry. Signed mandates, honest evidence, and real refunds and holds, on the PayPal sandbox.

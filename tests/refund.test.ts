@@ -288,3 +288,48 @@ test('a full-amount dispute still refunds everything and marks the purchase refu
   assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
   assert.equal(b.s.store.spentMoney(b.mandate.id), '0.00');
 });
+
+// ---------- payout safety (security review) ----------
+
+test('no payout on top of a refund that is pending or already partly done', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  b.s.store.updatePurchase(p.id, { paypal_capture_id: 'CAP-TEST-PENDING' });
+  const d = b.s.disputes.simulate(p.id);
+  await b.s.disputes.assemble(d.id);
+  await b.s.disputes.submit(d.id, 'qa'); // refund PENDING
+  await assert.rejects(() => b.s.disputes.payout(d.id, 'qa'), /is PENDING: no payout on top of it/);
+
+  const b2 = boot();
+  const p2 = await completedPurchase(b2, 'buy sku ELE-GAME-01', true);
+  const d2 = b2.s.disputes.simulate(p2.id, undefined, '100.00');
+  await b2.s.disputes.assemble(d2.id);
+  await b2.s.disputes.submit(d2.id, 'qa'); // $100 refunded
+  await assert.rejects(() => b2.s.disputes.payout(d2.id, 'qa'), /already refunded/);
+  assert.equal(b2.paypal.calls.filter((c) => c.op === 'payout').length, 0);
+});
+
+test('a payout is credited once even if its status is checked twice at the same time', async () => {
+  const b = boot();
+  const { p, d } = await breachWithFailedRefund(b);
+  await b.s.disputes.payout(d.id, 'qa');
+  await Promise.all([b.s.disputes.checkPayout(d.id), b.s.disputes.checkPayout(d.id)]);
+  await b.s.disputes.checkPayout(d.id);
+  assert.equal(b.s.store.getPurchase(p.id)!.refunded_value, '299.00', 'credited exactly once');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '0.00');
+});
+
+test('a payout that is returned after succeeding takes the credit back', async () => {
+  const b = boot();
+  const { p, d } = await breachWithFailedRefund(b);
+  const sent = await b.s.disputes.payout(d.id, 'qa');
+  await b.s.disputes.checkPayout(d.id);
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
+  b.paypal.reversePayout(sent.packet!.payout!.payout_batch_id);
+  const after = await b.s.disputes.checkPayout(d.id);
+  assert.equal(after.status, 'evidence_assembled', 'reopened');
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'disputed');
+  assert.equal(b.s.store.getPurchase(p.id)!.refunded_value, '0.00');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00', 'the purchase counts again');
+  assert.ok(b.s.evidence.forPurchase(p.id).some((e) => e.decision === 'payout_failed' && e.data.reversed === true));
+});
