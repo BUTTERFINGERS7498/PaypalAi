@@ -1,5 +1,6 @@
-01|AI agents can now spend your money. But when a charge is disputed, who can prove what the agent was allowed to do? That is the problem Sentry solves.
-02|Picture a helper robot doing your shopping. Sentry gives it a signed permission slip, a strict checker, and a notebook that cannot be quietly changed.
+01|AI agents can now spend your money. They pick items and they pay, all on their own.
+02|Then a charge is disputed. Was the agent allowed to buy it? Why did it choose that? Nobody can prove it, and the money is stuck.
+18|Sentry fixes that. A signed permission slip, a strict checker, and a notebook that cannot be quietly changed.
 03|Let us see it work. First, the mandate: a signed rulebook for the agent.
 04|Two hundred dollars a month, groceries only, and anything above seventy-five dollars waits for your approval.
 05|Every mandate is signed, and one click checks the signature.
@@ -8,6 +9,7 @@
 08|Every choice lands in the ledger, with its mandate check beside it.
 09|Now the honest part. A clearly labelled demo switch lets the agent break its own rules.
 10|The record still tells the truth: wrong category, over the cap.
+17|Every purchase also appears on the fence. Inside the ring, it is allowed. The red dot broke the rules.
 11|Every decision is written down: what the agent saw, what it chose, and the fingerprint of the record before it.
 12|One click checks the whole chain.
 13|When a charge is disputed, Sentry builds the response from this evidence, and code decides the verdict. First, the rogue purchase.

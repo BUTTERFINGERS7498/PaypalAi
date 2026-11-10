@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
+  "url": "intro.html",
+  "style": {
+    "background": "dawn",
+    "padding": 0,
+    "radius": 0,
+    "captions": true,
+    "cursor": "none"
+  },
+  "voice": {
+    "enabled": true,
+    "language": "en"
+  },
+  "output": {
+    "width": 1280,
+    "height": 720,
+    "fps": 24
+  },
+  "steps": [
+    {
+      "pause": 0.6
+    },
+    {
+      "press": "ArrowRight",
+      "zoom": false,
+      "say": "AI agents can now spend your money. They pick items and they pay, all on their own.",
+      "audio": "voice/01.mp3",
+      "hold": 0.8
+    },
+    {
+      "press": "ArrowRight",
+      "zoom": false,
+      "say": "Then a charge is disputed. Was the agent allowed to buy it? Why did it choose that? Nobody can prove it, and the money is stuck.",
+      "audio": "voice/02.mp3",
+      "hold": 0.8
+    },
+    {
+      "press": "ArrowRight",
+      "zoom": false,
+      "say": "Sentry fixes that. A signed permission slip, a strict checker, and a notebook that cannot be quietly changed.",
+      "audio": "voice/18.mp3",
+      "hold": 1.2
+    }
+  ]
+}

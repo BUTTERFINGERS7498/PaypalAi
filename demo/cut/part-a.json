@@ -1,28 +1,100 @@
 {
   "$schema": "https://raw.githubusercontent.com/gmpetrov/agent-screenplay/main/schema/scenario.schema.json",
   "url": "http://localhost:8099/#home",
-  "style": { "background": "dawn", "frame": "browser", "captions": false },
-  "voice": { "enabled": true, "language": "en" },
-  "output": { "width": 1280, "height": 720, "fps": 24 },
+  "style": {
+    "background": "dawn",
+    "frame": "browser",
+    "captions": true
+  },
+  "voice": {
+    "enabled": true,
+    "language": "en"
+  },
+  "output": {
+    "width": 1280,
+    "height": 720,
+    "fps": 24
+  },
   "steps": [
-    { "pause": 1, "say": "AI agents can now spend your money. But when a charge is disputed, who can prove what the agent was allowed to do? That is the problem Sentry solves.", "audio": "voice/01.mp3" },
-    { "scroll": "text=A helper robot goes shopping", "say": "Picture a helper robot doing your shopping. Sentry gives it a signed permission slip, a strict checker, and a notebook that cannot be quietly changed.", "audio": "voice/02.mp3" },
-    { "click": "role=button[name='Open the console']", "say": "Let us see it work. First, the mandate: a signed rulebook for the agent.", "audio": "voice/03.mp3" },
-    { "highlight": "text=Monthly cap", "text": "How much, per month", "say": "Two hundred dollars a month, groceries only, and anything above seventy-five dollars waits for your approval.", "audio": "voice/04.mp3" },
-    { "click": "role=button[name='Verify signature']", "say": "Every mandate is signed, and one click checks the signature.", "audio": "voice/05.mp3" },
-    { "pause": 1.5 },
-    { "click": "role=tab[name='2. Purchase ledger']", "say": "Now we tell the agent what to buy, in plain English.", "audio": "voice/06.mp3" },
-    { "type": "restock the pantry basics", "into": "label=Instruction (plain English)", "clear": true },
-    { "click": "role=button[name='Send to agent']", "say": "It picks an item, the checker confirms it fits the mandate, and a PayPal sandbox order is created.", "audio": "voice/07.mp3" },
-    { "wait": "text=Order created for", "hold": 1 },
-    { "scroll": "text=Purchase ledger" },
-    { "highlight": "text=Pantry basics bundle", "text": "Within mandate", "say": "Every choice lands in the ledger, with its mandate check beside it.", "audio": "voice/08.mp3" },
-    { "scroll": "text=Ask the agent" },
-    { "type": "buy sku ELE-GAME-01", "into": "label=Instruction (plain English)", "clear": true },
-    { "click": "text=Demo: let the agent break its mandate", "say": "Now the honest part. A clearly labelled demo switch lets the agent break its own rules.", "audio": "voice/09.mp3" },
-    { "click": "role=button[name='Send to agent']" },
-    { "wait": "text=Order created for Games console", "hold": 1 },
-    { "scroll": "text=Purchase ledger" },
-    { "highlight": "text=Outside mandate: category not allowed, exceeds monthly cap", "text": "The record says so, honestly", "say": "The record still tells the truth: wrong category, over the cap.", "audio": "voice/10.mp3", "hold": 1 }
+    {
+      "click": "role=button[name='Open the console']",
+      "say": "Let us see it work. First, the mandate: a signed rulebook for the agent.",
+      "audio": "voice/03.mp3"
+    },
+    {
+      "click": "role=tab[name='Mandates']"
+    },
+    {
+      "highlight": "text=The agent may spend up to",
+      "text": "How much, per month",
+      "say": "Two hundred dollars a month, groceries only, and anything above seventy-five dollars waits for your approval.",
+      "audio": "voice/04.mp3"
+    },
+    {
+      "click": "role=button[name='Verify signature']",
+      "say": "Every mandate is signed, and one click checks the signature.",
+      "audio": "voice/05.mp3"
+    },
+    {
+      "pause": 1.5
+    },
+    {
+      "click": "role=tab[name='Purchase ledger']",
+      "say": "Now we tell the agent what to buy, in plain English.",
+      "audio": "voice/06.mp3"
+    },
+    {
+      "type": "restock the pantry basics",
+      "into": "label=Instruction (plain English)",
+      "clear": true
+    },
+    {
+      "click": "role=button[name='Send to agent']",
+      "say": "It picks an item, the checker confirms it fits the mandate, and a PayPal sandbox order is created.",
+      "audio": "voice/07.mp3"
+    },
+    {
+      "wait": "text=Order created for",
+      "hold": 1
+    },
+    {
+      "scroll": "text=Purchase ledger"
+    },
+    {
+      "highlight": "text=Pantry basics bundle",
+      "text": "Within mandate",
+      "say": "Every choice lands in the ledger, with its mandate check beside it.",
+      "audio": "voice/08.mp3"
+    },
+    {
+      "scroll": "text=Ask the agent"
+    },
+    {
+      "type": "buy sku ELE-GAME-01",
+      "into": "label=Instruction (plain English)",
+      "clear": true
+    },
+    {
+      "click": "text=Demo: let the agent break its mandate",
+      "say": "Now the honest part. A clearly labelled demo switch lets the agent break its own rules.",
+      "audio": "voice/09.mp3"
+    },
+    {
+      "click": "role=button[name='Send to agent']"
+    },
+    {
+      "wait": "text=Order created for Games console",
+      "hold": 1
+    },
+    {
+      "scroll": "text=Purchase ledger"
+    },
+    {
+      "highlight": "text=Outside mandate: category not allowed, exceeds monthly cap",
+      "text": "The record says so, honestly",
+      "say": "The record still tells the truth: wrong category, over the cap.",
+      "audio": "voice/10.mp3",
+      "hold": 1
+    }
   ]
 }

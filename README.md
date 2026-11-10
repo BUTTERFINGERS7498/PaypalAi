@@ -12,7 +12,7 @@
 
 ### 🎥 Watch the demo
 
-[**▶ Watch the 3-minute narrated demo (MP4)**](demo/sentry-demo-3min.mp4) · [extended walkthrough with captions](demo/sentry-demo-full.mp4) · [or jump to each action](#-see-it-in-action)
+[**▶ Watch the 3-minute narrated demo (MP4)**](demo/sentry-demo-3min.mp4) · [the problem and the fix](#-the-problem-and-the-fix) · [or jump to each action](#-see-it-in-action)
 
 <sub>The voice-over is a synthetic neural voice (Microsoft Edge TTS, "Andrew"), not a human recording. The narration script is in <a href="demo/cut/narration.txt">demo/cut/narration.txt</a>.</sub>
 
@@ -22,74 +22,73 @@
 
 <br />
 
-<p align="center">
-  <img src="docs/media/landing.jpg" alt="The Sentry landing page: the headline 'When an AI agent spends your money, keep the receipt that proves why' beside a four-step example from signed mandate to dispute verdict." width="100%" />
-</p>
-<p align="center"><sub>The landing page. It tells the story in three scenes, then lets you step through one purchase and open the console.</sub></p>
+---
 
-<p align="center">
-  <img src="docs/media/console-ledger.jpg" alt="The purchase ledger in the Sentry console: three completed purchases and a pantry order within the mandate, plus a games console marked 'Outside mandate' and 'Demo: agent overrides its mandate'." width="100%" />
-</p>
-<p align="center"><sub>The purchase ledger. Every row shows the mandate check beside the payment status. The red and purple row was made in the clearly labelled demo mode.</sub></p>
+## 🧩 The problem and the fix
+
+### The problem
+
+An AI agent can now pick items and pay for them on its own. When one of those charges is disputed, nobody can prove what the agent was allowed to do, or why it chose that item. The money is stuck in an argument.
+
+<p align="center"><img src="docs/media/story-problem.gif" alt="An animated receipt: an agent buys milk, bread, coffee and a games console for 299 dollars. The charge is disputed, and three questions appear: was the agent allowed to buy it, why did it choose that, who can prove it. A red UNPROVEN stamp lands." width="80%" /></p>
+
+### The fix
+
+Sentry gives the agent a **signed permission slip** (a mandate), a **strict checker** made of plain code, and a **notebook of hash-chained evidence**. When a charge is disputed, the response is built from that evidence, and code decides the verdict.
+
+<p align="center"><img src="docs/media/story-solution.gif" alt="Three cards appear: a signed permission slip, a plain-code checker with ticks and a cross, and an evidence notebook of linked records. Then the Sentry seal and the line 'Receipts for agentic payments'." width="80%" /></p>
 
 ---
 
 ## 🎬 See it in action
 
-Every action below is a real recording of the console, with captions so it works on mute. Click **▶ watch the full-quality MP4** under any of them for a sharper version, or watch the whole thing in one go: **[▶ full walkthrough (4 min 21 s)](demo/sentry-demo-full.mp4)**.
+Short clips of the real console. The full narrated cut is **[the 3-minute demo](demo/sentry-demo-3min.mp4)**.
 
-### 1. The idea in one minute
+### 1. Sign a mandate
 
-An AI agent can spend your money, but nobody wrote down what it was allowed to buy. The landing page tells that story, then steps through one purchase.
+The rulebook your agent must stay inside: a monthly cap, the allowed categories, and the amount above which it must ask you first. One click re-checks the signature, and every change is a new signed version.
 
-<p align="center"><img src="docs/media/action-story.gif" alt="The landing page story, then the walkthrough following a games console purchase from signed mandate to dispute verdict" width="100%" /></p>
-<p align="center"><a href="demo/01-the-idea.mp4">▶ watch the full-quality MP4 (49 s)</a></p>
+<p align="center"><img src="docs/media/ui-mandate.gif" alt="The Mandates view: the mandate as a document with three clauses, then the Verify signature button and a SIGNATURE VERIFIED seal." width="90%" /></p>
 
-### 2. Sign a mandate
-
-The rulebook your agent must stay inside: a monthly cap, allowed categories, and the amount above which it must ask you first. One click re-checks the signature, and every change is a new signed version.
-
-<p align="center"><img src="docs/media/action-mandate.gif" alt="The Mandates view: highlighting the monthly cap and approval threshold, verifying the signature and opening the version history" width="100%" /></p>
-<p align="center"><a href="demo/02-sign-a-mandate.mp4">▶ watch the full-quality MP4 (34 s)</a></p>
-
-### 3. Tell the agent what to buy
+### 2. Tell the agent what to buy
 
 Type a plain-English instruction. The agent picks an item, the checker confirms it is inside the mandate, and a PayPal sandbox order is created for the buyer to approve.
 
-<p align="center"><img src="docs/media/action-agent.gif" alt="Typing 'restock the pantry basics', sending it to the agent, the order being created and the new ledger row marked Within mandate" width="100%" /></p>
-<p align="center"><a href="demo/03-the-agent-shops.mp4">▶ watch the full-quality MP4 (35 s)</a></p>
+<p align="center"><img src="docs/media/ui-agent.gif" alt="Typing 'restock the pantry basics' and sending it to the agent, then the message 'Order created for Pantry basics bundle'." width="90%" /></p>
 
-### 4. Break the rules on purpose
+### 3. Break the rules on purpose
 
-A clearly labelled demo switch turns the guard off so a bad choice goes through. The checker still records it honestly: wrong category, over the cap.
+A clearly labelled demo switch lets the agent break its own rules, so you can see what the record does. It still tells the truth: wrong category, over the cap.
 
-<p align="center"><img src="docs/media/action-rogue.gif" alt="Ticking the demo switch, asking for sku ELE-GAME-01, and the ledger showing the games console as Outside mandate" width="100%" /></p>
-<p align="center"><a href="demo/04-breaking-the-rules.mp4">▶ watch the full-quality MP4 (32 s)</a></p>
+<p align="center"><img src="docs/media/ui-rogue.gif" alt="Ticking the demo switch, asking for sku ELE-GAME-01, and the ledger showing the games console as outside the mandate." width="90%" /></p>
+
+### 4. The fence
+
+Your mandate drawn as a space. Every purchase is a dot. Inside the ring it is allowed, between the rings it asked you first, and in the hatched band it broke the rules.
+
+<p align="center"><img src="docs/media/ui-fence.gif" alt="The fence view: a map with a cap ring, an approval ring and a hatched outside band, with a red dot for the rogue purchase." width="90%" /></p>
 
 ### 5. Follow the evidence trail
 
-Every decision is a record: the instruction, every option the agent saw with its price, and the choice. Each record carries the fingerprint of the one before it, and one click verifies the whole chain.
+Every decision is a record: what the agent saw, what it chose, and the fingerprint of the record before it. One click checks the whole chain, and the links turn green.
 
-<p align="center"><img src="docs/media/action-evidence.gif" alt="The Evidence trail view: the options the agent saw, the chain-valid badge, and verifying the whole chain" width="100%" /></p>
-<p align="center"><a href="demo/05-the-evidence-trail.mp4">▶ watch the full-quality MP4 (27 s)</a></p>
+<p align="center"><img src="docs/media/ui-evidence.gif" alt="The Evidence trail: the options the agent saw, then Verify whole chain, and the chain of records turning green." width="90%" /></p>
 
-### 6. A dispute the agent can defend
+### 6. A dispute the agent cannot defend
 
-Simulate a dispute on an in-mandate purchase. The response is assembled from the evidence, and the verdict is computed by code: **DEFENSIBLE**, so provide the evidence.
+On the rogue purchase the verdict is **MANDATE BREACH** and the action is to accept the claim. Sentry tells the truth instead of defending a bad purchase.
 
-<p align="center"><img src="docs/media/action-dispute-defensible.gif" alt="Creating a simulated dispute on Rolled oats and assembling the evidence, with verdict DEFENSIBLE and the chain valid" width="100%" /></p>
-<p align="center"><a href="demo/06-the-dispute.mp4">▶ watch the full-quality MP4 (41 s)</a></p>
+<p align="center"><img src="docs/media/ui-dispute-breach.gif" alt="Creating a simulated dispute on the games console and assembling the evidence, with the verdict stamp MANDATE BREACH." width="90%" /></p>
 
-### 7. A dispute the agent cannot defend
+### 7. A dispute the agent can defend
 
-The same process on the rogue purchase gives **MANDATE BREACH**, and the action is to accept the claim. Sentry tells the truth instead of defending a bad purchase.
+On an in-mandate purchase the same process gives **DEFENSIBLE**: provide the evidence, and the record proves it.
 
-<p align="center"><img src="docs/media/action-dispute-breach.gif" alt="Creating a simulated dispute on the games console and assembling the evidence, with verdict MANDATE BREACH" width="100%" /></p>
-<p align="center"><a href="demo/07-when-the-agent-is-wrong.mp4">▶ watch the full-quality MP4 (43 s)</a></p>
+<p align="center"><img src="docs/media/ui-dispute-defensible.gif" alt="Creating a simulated dispute on an in-mandate purchase and assembling the evidence, with the verdict stamp DEFENSIBLE." width="90%" /></p>
 
 > **How these were recorded, honestly.** They were filmed on a local run with the **mock PayPal client** and the on-server semantic engine, so nothing in them touches PayPal. The step where the buyer approves at PayPal is stood in for by posting the same `CHECKOUT.ORDER.APPROVED` webhook PayPal would send (`demo/approve-orders.mjs`). Disputes are the labelled **simulated** ones. The real PayPal sandbox path is described in [Run it against the real PayPal sandbox](#-run-it-against-the-real-paypal-sandbox).
 >
-> **Re-make them:** each piece is a scenario file in [`demo/`](demo) (`01-…json` to `07-…json`), rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) (`npx agent-screenplay record demo/01-the-idea.json`). The inline GIFs are cut from the MP4s with ffmpeg.
+> **Re-make them:** the video is three scenario files in [`demo/cut/`](demo/cut): `intro.json` (an animated HTML intro, `intro.html`), `part-a.json` and `part-b.json`, rendered with [`agent-screenplay`](https://github.com/gmpetrov/agent-screenplay) and joined with ffmpeg. The GIFs above are cut from those recordings with ffmpeg.
 
 ---
 
