@@ -19,6 +19,14 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **B2 Hold then capture (2026-11-11, uncommitted):** env `APPROVAL_HOLD=authorize` (+ `CHECKOUT_MODE=card`). `Gate.placeHold`
+  (order intent AUTHORIZE, ticket `mandate:hold`), `captureHold` on approve (after re-check), `releaseHold` on reject or failed
+  re-check; `gate.reject` is now async. Client: `createOrder(…, {intent})`, `captureAuthorization`, `voidAuthorization`.
+  New column `purchases.paypal_authorization_id` (migration in `db.ts` `migrate()`). Evidence `authorized`/`voided`. UI: held
+  chip + "Approve and capture"/"Reject and release hold". **Verified on the real sandbox:** holds 4LL41933LT707720C ->
+  CAPTURED (capture 8BE659256K876692J), 2LA91945JU662553S -> VOIDED; spend 0.00 while held. Tests `tests/hold.test.ts` (7).
+  Also fixed 2 security-review findings on B1: refund only frees budget when COMPLETED + full (PENDING/partial recorded,
+  FAILED/CANCELLED -> refund_failed); 3 new refund tests. `npm test` 63 pass, e2e 4 pass 1 skipped.
 - **B1 Refund on breach (2026-11-11, uncommitted):** `PaypalClient.refundCapture` (sandbox `POST /v2/payments/captures/{id}/refund`,
   `PayPal-Request-Id: mandate-refund-<dispute id>`; mock is idempotent and refuses a second refund), `Gate.refundForBreach`
   (simulated dispute + MANDATE_BREACH only; ticket for the dispute) and `Gate.onCaptureRefunded` (webhook

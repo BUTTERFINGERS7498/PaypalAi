@@ -213,7 +213,7 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
     if (method === 'POST' && (m = path.match(/^\/api\/approvals\/([\w-]+)\/(approve|reject)$/))) {
       requireAuth(req);
       const { by, note } = decided(await readJson(req));
-      return sendJson(res, 200, m[2] === 'approve' ? await gate.approve(m[1], by, note) : gate.reject(m[1], by, note));
+      return sendJson(res, 200, m[2] === 'approve' ? await gate.approve(m[1], by, note) : await gate.reject(m[1], by, note));
     }
 
     // ----- evidence -----

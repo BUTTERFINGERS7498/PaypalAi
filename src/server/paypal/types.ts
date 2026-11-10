@@ -7,6 +7,9 @@ export interface CreatedOrder {
   status: string;
   /** Card checkout only: PayPal captured the payment as part of creating the order. */
   capture_id?: string | null;
+  /** intent AUTHORIZE with card checkout: the hold PayPal placed while creating the order. */
+  authorization_id?: string | null;
+  authorization_expires?: string | null;
 }
 
 export interface CapturedOrder {
@@ -50,7 +53,12 @@ export class PaypalError extends Error {
 /** Everything that mutates PayPal requires an ApprovalTicket. Reads and verification do not. */
 export interface PaypalClient {
   readonly mode: 'sandbox' | 'mock';
-  createOrder(ticket: ApprovalTicket, purchase: Purchase): Promise<CreatedOrder>;
+  /** intent AUTHORIZE places a hold (money reserved, not taken); the default CAPTURE takes it. */
+  createOrder(ticket: ApprovalTicket, purchase: Purchase, opts?: { intent?: 'CAPTURE' | 'AUTHORIZE' }): Promise<CreatedOrder>;
+  /** Take the money held by an authorization. `requestId` makes it idempotent. */
+  captureAuthorization(ticket: ApprovalTicket, authorizationId: string, requestId: string): Promise<CapturedOrder>;
+  /** Release the money held by an authorization. */
+  voidAuthorization(ticket: ApprovalTicket, authorizationId: string): Promise<{ status: string }>;
   captureOrder(ticket: ApprovalTicket, paypalOrderId: string): Promise<CapturedOrder>;
   /** Read-only: the order's current state at PayPal (no ticket needed). */
   getOrder(paypalOrderId: string): Promise<{ status: string; capture_id: string | null }>;

@@ -113,7 +113,11 @@ test('a real PayPal dispute is not refunded by Sentry (PayPal refunds on accept-
 
   const event = (id: string) => ({
     id, event_type: 'PAYMENT.CAPTURE.REFUNDED', resource_type: 'refund',
-    resource: { id: 'REF-PP-1', status: 'COMPLETED', links: [{ rel: 'up', href: `https://api.sandbox.paypal.com/v2/payments/captures/${p.paypal_capture_id}` }] },
+    resource: {
+      id: 'REF-PP-1', status: 'COMPLETED', amount: { currency_code: 'USD', value: '299.00' },
+      seller_payable_breakdown: { total_refunded_amount: { currency_code: 'USD', value: '299.00' } },
+      links: [{ rel: 'up', href: `https://api.sandbox.paypal.com/v2/payments/captures/${p.paypal_capture_id}` }],
+    },
   });
   await b.s.webhooks.handle({}, event('WH-R-1'));
   assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
@@ -122,4 +126,58 @@ test('a real PayPal dispute is not refunded by Sentry (PayPal refunds on accept-
   assert.equal(refunds.length, 1, 'recorded once');
   assert.equal(refunds[0].data.source, 'accept_claim');
   assert.equal(refunds[0].data.paypal_refund_id, 'REF-PP-1');
+});
+
+test('a partial refund from PayPal is recorded but the purchase still counts against the cap', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  const ev = (id: string, value: string, total: string) => ({
+    id, event_type: 'PAYMENT.CAPTURE.REFUNDED', resource_type: 'refund',
+    resource: {
+      id: `REF-${id}`, status: 'COMPLETED', amount: { currency_code: 'USD', value },
+      seller_payable_breakdown: { total_refunded_amount: { currency_code: 'USD', value: total } },
+      links: [{ rel: 'up', href: `https://api.sandbox.paypal.com/v2/payments/captures/${p.paypal_capture_id}` }],
+    },
+  });
+  await b.s.webhooks.handle({}, ev('WH-P-1', '100.00', '100.00'));
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'completed', 'a partial refund does not free the whole amount');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00');
+  const partial = b.s.evidence.forPurchase(p.id).find((e) => e.decision === 'refunded')!;
+  assert.equal(partial.data.final, false);
+  // The rest arrives: now the total covers the purchase, so it is refunded and the budget is restored.
+  await b.s.webhooks.handle({}, ev('WH-P-2', '199.00', '299.00'));
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '0.00');
+});
+
+test('a PENDING refund is recorded but keeps counting until PayPal completes it', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  b.s.store.updatePurchase(p.id, { paypal_capture_id: 'CAP-TEST-PENDING' });
+  const d = b.s.disputes.simulate(p.id);
+  await b.s.disputes.assemble(d.id);
+  const submitted = await b.s.disputes.submit(d.id, 'qa');
+  assert.equal(submitted.packet!.refund!.status, 'PENDING');
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'disputed', 'not refunded yet');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00');
+  // PayPal later completes it.
+  await b.s.webhooks.handle({}, {
+    id: 'WH-PEND-1', event_type: 'PAYMENT.CAPTURE.REFUNDED', resource_type: 'refund',
+    resource: { id: submitted.packet!.refund!.paypal_refund_id, status: 'COMPLETED', amount: { currency_code: 'USD', value: '299.00' },
+      links: [{ rel: 'up', href: 'https://api.sandbox.paypal.com/v2/payments/captures/CAP-TEST-PENDING' }] },
+  });
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'refunded');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '0.00');
+});
+
+test('a refund PayPal reports as FAILED leaves the dispute open and the budget unchanged', async () => {
+  const b = boot();
+  const p = await completedPurchase(b, 'buy sku ELE-GAME-01', true);
+  b.s.store.updatePurchase(p.id, { paypal_capture_id: 'CAP-TEST-REFUNDFAILS' });
+  const d = b.s.disputes.simulate(p.id);
+  await b.s.disputes.assemble(d.id);
+  await assert.rejects(() => b.s.disputes.submit(d.id, 'qa'), (e: unknown) => e instanceof HttpError && e.status === 502);
+  assert.equal(b.s.store.getDispute(d.id)!.status, 'evidence_assembled');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00');
+  assert.ok(b.s.evidence.forPurchase(p.id).some((e) => e.decision === 'refund_failed' && e.data.paypal_status === 'FAILED'));
 });

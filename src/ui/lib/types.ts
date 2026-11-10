@@ -54,6 +54,8 @@ export interface Purchase {
   paypal_order_id: string | null;
   approve_url: string | null;
   paypal_capture_id: string | null;
+  /** Set while the money is held at PayPal for a human decision. */
+  paypal_authorization_id?: string | null;
   approval_id: string | null;
   dispute_id: string | null;
   created_at: string;
@@ -85,7 +87,9 @@ export type Decision =
   | "mandate_revoked"
   | "clarify"
   | "refunded"
-  | "refund_failed";
+  | "refund_failed"
+  | "authorized"
+  | "voided";
 
 export interface EvidenceRecord {
   record_id: string;

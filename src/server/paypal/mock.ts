@@ -9,7 +9,9 @@ import {
 export class MockPaypalClient implements PaypalClient {
   readonly mode = 'mock' as const;
   /** Every mutating call, for tests to assert on. */
-  readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim' | 'refund'; subject_id: string; target: string; detail?: unknown }[] = [];
+  readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim' | 'refund' | 'capture_authorization' | 'void_authorization'; subject_id: string; target: string; detail?: unknown }[] = [];
+  /** authorization id -> state, for holds (intent AUTHORIZE). */
+  private auths = new Map<string, { status: 'CREATED' | 'CAPTURED' | 'VOIDED'; captureId: string | null }>();
   /** capture id -> refund, so a repeated request id returns the same refund and a second refund is refused. */
   private refunds = new Map<string, { requestId: string; result: RefundResult }>();
   private orders = new Map<string, { status: 'CREATED' | 'COMPLETED'; purchaseId: string }>();
@@ -17,13 +19,19 @@ export class MockPaypalClient implements PaypalClient {
   private approved = new Set<string>();
   private counter = 0;
 
-  async createOrder(ticket: ApprovalTicket, p: Purchase): Promise<CreatedOrder> {
+  async createOrder(ticket: ApprovalTicket, p: Purchase, opts: { intent?: 'CAPTURE' | 'AUTHORIZE' } = {}): Promise<CreatedOrder> {
     assertTicket(ticket);
     if (p.sku.endsWith('-FAIL')) throw new PaypalError('Mock PayPal rejected the order', 422, 'mock-debug-1');
     this.counter += 1;
     const id = `ORD-MOCK-${String(this.counter).padStart(4, '0')}-${p.id.slice(-6)}`;
     this.orders.set(id, { status: 'CREATED', purchaseId: p.id });
-    this.calls.push({ op: 'create_order', subject_id: ticket.subject_id, target: id });
+    this.calls.push({ op: 'create_order', subject_id: ticket.subject_id, target: id, detail: { intent: opts.intent ?? 'CAPTURE' } });
+    if (opts.intent === 'AUTHORIZE') {
+      // Like a card checkout at PayPal: the hold is placed while the order is created.
+      const authId = `AUTH-MOCK-${String(this.counter).padStart(4, '0')}`;
+      this.auths.set(authId, { status: 'CREATED', captureId: null });
+      return { paypal_order_id: id, approve_url: null, status: 'COMPLETED', authorization_id: authId, authorization_expires: null };
+    }
     return { paypal_order_id: id, approve_url: `https://www.sandbox.paypal.com/checkoutnow?token=${id}`, status: 'PAYER_ACTION_REQUIRED' };
   }
 
@@ -71,10 +79,34 @@ export class MockPaypalClient implements PaypalClient {
     if (prior && prior.requestId === r.requestId) return prior.result; // idempotent, like PayPal-Request-Id
     if (prior) throw new PaypalError(`Mock capture ${captureId} is already fully refunded (CAPTURE_FULLY_REFUNDED)`, 422, 'mock-debug-4');
     this.counter += 1;
-    const result: RefundResult = { paypal_refund_id: `REFUND-MOCK-${String(this.counter).padStart(4, '0')}`, status: 'COMPLETED' };
+    // Test hooks: a capture id ending -PENDING / -REFUNDFAILS gets that refund status back, as PayPal can report.
+    const status = captureId.endsWith('-PENDING') ? 'PENDING' : captureId.endsWith('-REFUNDFAILS') ? 'FAILED' : 'COMPLETED';
+    const result: RefundResult = { paypal_refund_id: `REFUND-MOCK-${String(this.counter).padStart(4, '0')}`, status };
     this.refunds.set(captureId, { requestId: r.requestId, result });
     this.calls.push({ op: 'refund', subject_id: ticket.subject_id, target: captureId, detail: r });
     return result;
+  }
+
+  async captureAuthorization(ticket: ApprovalTicket, authorizationId: string, requestId: string): Promise<CapturedOrder> {
+    assertTicket(ticket);
+    const a = this.auths.get(authorizationId);
+    if (!a) throw new PaypalError(`Mock authorization ${authorizationId} not found`, 404, 'mock-debug-5');
+    if (a.status === 'CAPTURED') return { paypal_capture_id: a.captureId! }; // idempotent retry
+    if (a.status === 'VOIDED') throw new PaypalError(`Mock authorization ${authorizationId} is voided (AUTHORIZATION_VOIDED)`, 422, 'mock-debug-6');
+    a.status = 'CAPTURED';
+    a.captureId = `CAP-MOCK-${authorizationId.slice(-8)}`;
+    this.calls.push({ op: 'capture_authorization', subject_id: ticket.subject_id, target: authorizationId, detail: { requestId } });
+    return { paypal_capture_id: a.captureId };
+  }
+
+  async voidAuthorization(ticket: ApprovalTicket, authorizationId: string): Promise<{ status: string }> {
+    assertTicket(ticket);
+    const a = this.auths.get(authorizationId);
+    if (!a) throw new PaypalError(`Mock authorization ${authorizationId} not found`, 404, 'mock-debug-5');
+    if (a.status === 'CAPTURED') throw new PaypalError(`Mock authorization ${authorizationId} is already captured`, 422, 'mock-debug-7');
+    a.status = 'VOIDED';
+    this.calls.push({ op: 'void_authorization', subject_id: ticket.subject_id, target: authorizationId });
+    return { status: 'VOIDED' };
   }
 
   async verifyWebhook(h: WebhookHeaders, _event: unknown): Promise<boolean> {

@@ -117,10 +117,15 @@ export class Gate {
       });
       const withApproval = this.store.updatePurchase(purchase.id, { approval_id: approval.id });
       const ev = this.evidence.append({ ...base, decision: 'needs_approval', budget_after: centsToMoney(spent + price), purchase_id: purchase.id });
-      return { outcome: 'needs_approval', purchase: withApproval, approval, evidence: ev,
+      // Feature B2: hold the money at PayPal while the human decides (card checkout only).
+      const held = this.holdEnabled ? await this.placeHold(withApproval) : withApproval;
+      const holdNote = held.paypal_authorization_id
+        ? ` ${formatMoney(r.item.price.currency_code, r.item.price.value)} is held at PayPal until you decide; nothing is charged yet.`
+        : ' Nothing was charged.';
+      return { outcome: 'needs_approval', purchase: held, approval, evidence: ev,
         reply: check.reasons.includes('above_approval_threshold')
-          ? `${itemLabel} is above your ${formatMoney('USD', m.limits.approval_above)} threshold, so it is waiting for your approval. Nothing was charged.`
-          : `I'm not sure ${itemLabel} is what you meant, and your mandate says to ask when unsure, so it is waiting for your approval. Nothing was charged.` };
+          ? `${itemLabel} is above your ${formatMoney('USD', m.limits.approval_above)} threshold, so it is waiting for your approval.${holdNote}`
+          : `I'm not sure ${itemLabel} is what you meant, and your mandate says to ask when unsure, so it is waiting for your approval.${holdNote}` };
     }
 
     // 3. Within mandate, under the threshold (or the labelled rogue demo): check out.
@@ -163,16 +168,93 @@ export class Gate {
     });
 
     if (!check.within_mandate) {
+      // The mandate no longer allows it: release any hold, then fail the purchase.
+      if (purchase.paypal_authorization_id) await this.releaseHold(purchase, `human:${by}`, 'mandate_recheck_failed');
       const failed = this.store.transitionPurchase(purchase.id, 'pending_approval', { status: 'failed', within_mandate: false, breaches: check.breaches });
       return { approval: decided, purchase: failed ?? this.store.getPurchase(purchase.id)! };
     }
     const moved = this.store.transitionPurchase(purchase.id, 'pending_approval', { status: 'awaiting_payer' });
     if (!moved) throw invalidState(`Purchase ${purchase.id} is no longer pending approval`);
-    const done = await this.checkout(moved, `human:${by}`);
+    // Money already held at PayPal: take it now. Otherwise create the order as before.
+    const done = moved.paypal_authorization_id
+      ? await this.captureHold(moved, `human:${by}`)
+      : await this.checkout(moved, `human:${by}`);
     return { approval: decided, purchase: done };
   }
 
-  reject(approvalId: string, by: string, note: string | null): { approval: Approval; purchase: Purchase } {
+  // ---------------------------------------------------------------------------------------------
+  // Holds (feature B2): money reserved at PayPal while a human decides
+  // ---------------------------------------------------------------------------------------------
+  /** Holds need card checkout: with buyer approval at PayPal, a hold would first wait for the buyer to log in. */
+  private get holdEnabled(): boolean {
+    return this.cfg.approvalHold === 'authorize' && this.cfg.checkoutMode === 'card';
+  }
+
+  /** Authorize (do not capture) the purchase amount. Within the mandate, so the mandate authorises the hold. */
+  private async placeHold(p: Purchase): Promise<Purchase> {
+    const ticket = mintTicket(p.id, 'mandate:hold');
+    const failed = (err: unknown) => {
+      this.evidence.append({
+        decision: 'order_failed', mandate: this.snapshotFor(p), purchase_id: p.id, choice: { sku: p.sku, price: p.amount.value },
+        budget_before: this.store.spentMoney(p.mandate_id), budget_after: this.store.spentMoney(p.mandate_id),
+        within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+        data: { stage: 'hold', authorised_by: 'mandate:hold', error: errInfo(err), note: 'no hold placed; the approval works as before' },
+      });
+      return this.store.getPurchase(p.id)!;
+    };
+    try {
+      const o = await this.paypal.createOrder(ticket, p, { intent: 'AUTHORIZE' });
+      if (!o.authorization_id) return failed(new Error(`PayPal returned no authorization (order status ${o.status})`));
+      const held = this.store.updatePurchase(p.id, { paypal_order_id: o.paypal_order_id, paypal_authorization_id: o.authorization_id });
+      this.evidence.append({
+        decision: 'authorized', mandate: this.snapshotFor(held), purchase_id: held.id, paypal_order_id: o.paypal_order_id,
+        choice: { sku: held.sku, price: held.amount.value },
+        budget_before: this.store.spentMoney(held.mandate_id), budget_after: this.store.spentMoney(held.mandate_id),
+        within_mandate: held.within_mandate, breaches: held.breaches, demo_rogue: held.demo_rogue,
+        data: { paypal_authorization_id: o.authorization_id, expires: o.authorization_expires ?? null, amount: held.amount, authorised_by: 'mandate:hold', paypal_mode: this.paypal.mode },
+      });
+      return held;
+    } catch (err) {
+      return failed(err);
+    }
+  }
+
+  /** The human approved: capture the held authorization. Expects the purchase already moved to awaiting_payer. */
+  private async captureHold(p: Purchase, authorisedBy: string): Promise<Purchase> {
+    const ticket = mintTicket(p.id, authorisedBy);
+    try {
+      const cap = await this.paypal.captureAuthorization(ticket, p.paypal_authorization_id!, p.id);
+      return this.recordCaptured(p, cap.paypal_capture_id, authorisedBy, 'authorization');
+    } catch (err) {
+      const failed = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'failed' }) ?? this.store.getPurchase(p.id)!;
+      this.evidence.append({
+        decision: 'order_failed', mandate: this.snapshotFor(failed), purchase_id: failed.id, paypal_order_id: failed.paypal_order_id,
+        choice: { sku: failed.sku, price: failed.amount.value },
+        budget_before: this.store.spentMoney(failed.mandate_id), budget_after: this.store.spentMoney(failed.mandate_id),
+        within_mandate: failed.within_mandate, breaches: failed.breaches, demo_rogue: failed.demo_rogue,
+        data: { stage: 'capture_authorization', paypal_authorization_id: p.paypal_authorization_id, authorised_by: authorisedBy, error: errInfo(err) },
+      });
+      return failed;
+    }
+  }
+
+  /** Release a hold (rejected, or the mandate no longer allows it). A failed void is recorded; the hold then expires at PayPal. */
+  private async releaseHold(p: Purchase, authorisedBy: string, reason: string): Promise<void> {
+    const ticket = mintTicket(p.id, authorisedBy);
+    const common = {
+      mandate: this.snapshotFor(p), purchase_id: p.id, paypal_order_id: p.paypal_order_id, choice: { sku: p.sku, price: p.amount.value },
+      budget_before: this.store.spentMoney(p.mandate_id), budget_after: this.store.spentMoney(p.mandate_id),
+      within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+    };
+    try {
+      const r = await this.paypal.voidAuthorization(ticket, p.paypal_authorization_id!);
+      this.evidence.append({ ...common, decision: 'voided', data: { paypal_authorization_id: p.paypal_authorization_id, paypal_status: r.status, reason, authorised_by: authorisedBy } });
+    } catch (err) {
+      this.evidence.append({ ...common, decision: 'order_failed', data: { stage: 'void', paypal_authorization_id: p.paypal_authorization_id, reason, authorised_by: authorisedBy, error: errInfo(err) } });
+    }
+  }
+
+  async reject(approvalId: string, by: string, note: string | null): Promise<{ approval: Approval; purchase: Purchase }> {
     const ap = this.store.getApproval(approvalId);
     if (!ap) throw notFound(`Approval ${approvalId} not found`);
     if (ap.status !== 'pending') throw invalidState(`Approval ${approvalId} is ${ap.status}, not pending`, { status: ap.status });
@@ -187,7 +269,9 @@ export class Gate {
       choice: { sku: purchase.sku, price: purchase.amount.value }, budget_before: spent, budget_after: spent,
       data: { approval_id: approvalId, decided_by: by, note },
     });
-    return { approval: decided, purchase: rejected };
+    // Feature B2: a rejected purchase releases the money held at PayPal.
+    if (rejected.paypal_authorization_id) await this.releaseHold(rejected, `human:${by}`, 'rejected');
+    return { approval: decided, purchase: this.store.getPurchase(purchase.id)! };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -407,29 +491,65 @@ export class Gate {
       });
       throw err;
     }
-    return this.recordRefund(p, { paypal_refund_id: result.paypal_refund_id, status: result.status, source: 'refund_api', dispute_id: d.id, by }, spentBefore);
+    // A refund PayPal reports as FAILED or CANCELLED moved no money: treat it as a failure (the dispute stays open).
+    if (result.status === 'FAILED' || result.status === 'CANCELLED') {
+      const err = new Error(`PayPal refund ${result.paypal_refund_id} ended ${result.status}`);
+      this.evidence.append({
+        decision: 'refund_failed', mandate: this.snapshotFor(p), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+        choice: { sku: p.sku, price: p.amount.value }, budget_before: spentBefore, budget_after: spentBefore,
+        within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+        data: { dispute_id: d.id, paypal_capture_id: p.paypal_capture_id, paypal_refund_id: result.paypal_refund_id, paypal_status: result.status, authorised_by: `human:${by}`, error: errInfo(err) },
+      });
+      throw err;
+    }
+    // COMPLETED for the full amount frees the budget; PENDING is recorded but still counts until PayPal completes it.
+    return this.recordRefund(p, {
+      paypal_refund_id: result.paypal_refund_id, status: result.status, source: 'refund_api', dispute_id: d.id, by,
+      final: result.status === 'COMPLETED', refundedTotal: p.amount.value,
+    }, spentBefore);
   }
 
-  /** Webhook PAYMENT.CAPTURE.REFUNDED: record a refund made at PayPal (accept-claim on a real dispute, or the dashboard). */
-  onCaptureRefunded(captureId: string, refundId: string | null, status: string | null): Purchase | null {
+  /**
+   * Webhook PAYMENT.CAPTURE.REFUNDED: record a refund made at PayPal (accept-claim on a real dispute, the dashboard,
+   * or the completion of a refund that was PENDING). The purchase only becomes `refunded` (and stops counting against
+   * the cap) when PayPal says COMPLETED and the total refunded covers the full amount; a partial or pending refund is
+   * recorded in the evidence but the purchase keeps counting. Each refund id + status is recorded once.
+   */
+  onCaptureRefunded(captureId: string, refund: { id: string | null; status: string | null; amount: string | null; totalRefunded: string | null }): Purchase | null {
     const p = this.store.listPurchases().find((x) => x.paypal_capture_id === captureId);
     if (!p) return null;
-    if (p.status === 'refunded') return p; // already recorded (our own refund, or a repeated webhook)
-    this.recordRefund(p, { paypal_refund_id: refundId ?? 'unknown', status: status ?? 'COMPLETED', source: 'accept_claim', dispute_id: p.dispute_id, by: null }, this.store.spentMoney(p.mandate_id));
+    if (p.status === 'refunded') return p; // already final (our own refund, or a repeated webhook)
+    const refundId = refund.id ?? 'unknown';
+    const status = refund.status ?? 'UNKNOWN';
+    const seen = this.evidence.forPurchase(p.id).some((e) => e.decision === 'refunded' && e.data.paypal_refund_id === refundId && e.data.paypal_status === status);
+    if (seen) return p;
+    const total = refund.totalRefunded ?? refund.amount;
+    let full = false;
+    try { full = total !== null && toCents(total) >= toCents(p.amount.value); } catch { full = false; }
+    this.recordRefund(p, {
+      paypal_refund_id: refundId, status, source: 'accept_claim', dispute_id: p.dispute_id, by: null,
+      final: status === 'COMPLETED' && full, refundedTotal: total,
+    }, this.store.spentMoney(p.mandate_id));
     return this.store.getPurchase(p.id);
   }
 
-  private recordRefund(p: Purchase, r: { paypal_refund_id: string; status: string; source: DisputeRefund['source']; dispute_id: string | null; by: string | null }, spentBefore: string): DisputeRefund {
-    // 'refunded' is not a spending status, so the month's budget is restored by the status change itself.
-    const refunded = this.store.updatePurchase(p.id, { status: 'refunded' });
+  private recordRefund(
+    p: Purchase,
+    r: { paypal_refund_id: string; status: string; source: DisputeRefund['source']; dispute_id: string | null; by: string | null; final: boolean; refundedTotal: string | null },
+    spentBefore: string,
+  ): DisputeRefund {
+    // 'refunded' is not a spending status, so the month's budget is restored by the status change itself, and only
+    // for a final (completed, full) refund. transitionPurchase makes the change happen at most once.
+    const after = r.final ? (this.store.transitionPurchase(p.id, p.status, { status: 'refunded' }) ?? this.store.getPurchase(p.id)!) : p;
     this.evidence.append({
-      decision: 'refunded', mandate: this.snapshotFor(refunded), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+      decision: 'refunded', mandate: this.snapshotFor(after), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
       choice: { sku: p.sku, price: p.amount.value },
       budget_before: spentBefore, budget_after: this.store.spentMoney(p.mandate_id),
       within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
       data: {
         paypal_refund_id: r.paypal_refund_id, paypal_status: r.status, paypal_capture_id: p.paypal_capture_id,
-        amount: p.amount, source: r.source, dispute_id: r.dispute_id, ...(r.by ? { authorised_by: `human:${r.by}` } : {}),
+        amount: p.amount, refunded_total: r.refundedTotal, final: r.final,
+        source: r.source, dispute_id: r.dispute_id, ...(r.by ? { authorised_by: `human:${r.by}` } : {}),
       },
     });
     return { paypal_refund_id: r.paypal_refund_id, status: r.status, amount: p.amount, source: r.source, refunded_at: nowIso() };

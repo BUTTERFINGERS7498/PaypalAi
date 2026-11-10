@@ -174,6 +174,7 @@ We want you to know exactly what has been run against PayPal.
 | Out-of-mandate purchase recorded as a breach (demo mode) | ✅ **Run for real**: captured at PayPal with `within_mandate: false` |
 | Dispute verdicts (`DEFENSIBLE` / `MANDATE_BREACH`) and narratives | ⚠️ **Simulated disputes only.** The verdict logic and Claude-written narratives were run on local `simulated` disputes |
 | **Refund on breach**: accepting the claim on a `MANDATE_BREACH` refunds the capture through `POST /v2/payments/captures/{id}/refund` | ✅ **Run for real** on the PayPal sandbox through our own server (2026-11-11): a rogue $299.00 purchase was captured, disputed (simulated), assembled as `MANDATE_BREACH`, and accepting the claim returned refund `22W7201820913982S` `COMPLETED`; PayPal then reported the capture as `REFUNDED`, and the mandate's spend went back down. Partial refunds, idempotent retries and the over-refund guard (`CAPTURE_FULLY_REFUNDED`) were also checked by hand |
+| **Hold, then capture** (`APPROVAL_HOLD=authorize` with card checkout): a purchase above the approval line is authorized (held) at PayPal; approve captures it, reject voids it | ✅ **Run for real** on the PayPal sandbox through our own server (2026-11-11): two $42.00 holds placed (`4LL41933LT707720C`, `2LA91945JU662553S`); approving the first gave capture `8BE659256K876692J` and PayPal reports that authorization `CAPTURED`; rejecting the second made PayPal report it `VOIDED`. The mandate's spend stayed at $0.00 while both were held |
 | **Card checkout** (`CHECKOUT_MODE=card`): pays with PayPal's published sandbox test card, no buyer login | ✅ **Run for real** on the sandbox: the order comes back `COMPLETED` with its capture. Sandbox only; the client cannot reach live PayPal |
 | PayPal Disputes API: **list** | ✅ Works with the sandbox app (returned no disputes) |
 | PayPal Disputes API: **create / provide-evidence / accept-claim** | ❌ **Not exercised.** PayPal answered `TRANSACTION_NOT_ELIGIBLE` when we tried to open a dispute on our sandbox payments, and the buyer could not open one in the sandbox UI either |
@@ -355,12 +356,23 @@ The engine only **proposes**. The mandate checker and the gate decide exactly as
 
 All of it is in the evidence record, so it is covered by the hash chain like everything else.
 
+#### Hold the money while you decide
+
+With `APPROVAL_HOLD=authorize` and `CHECKOUT_MODE=card`, a purchase above the approval line is **held** at PayPal (an authorization), not charged. The approval queue shows "USD 42.00 held at PayPal · not charged yet":
+
+- **Approve and capture**: the mandate is checked again, then the held money is captured. No second order.
+- **Reject and release hold**: the authorization is voided at PayPal.
+- If the mandate was revoked or the budget used up in the meantime, approving voids the hold instead of capturing.
+
+Each step is ticketed by the gate and written to the evidence chain (`authorized`, `captured` with `source: authorization`, `voided`). Held money does not count against the cap until it is captured. If PayPal will not place a hold, the failure is recorded and the approval works the old way. Holds need card checkout, because with buyer approval the hold would first wait for the buyer to log in at PayPal.
+
 #### Refund on breach
 
 When a dispute's verdict is **MANDATE BREACH**, the button in the case file is **Accept claim and refund**. Sentry refunds the capture through the PayPal refund API, with a ticket minted by the gate for that dispute and the person's name, then:
 
 - the purchase becomes `refunded`, and the month's budget goes back up by the refunded amount;
 - a `refunded` evidence record holds the PayPal refund id, so the refund is part of the hash chain;
+- only a refund PayPal reports `COMPLETED` for the full amount frees the budget: a `PENDING` or partial refund is recorded, but the purchase keeps counting until PayPal completes it;
 - the case file shows a **REFUNDED** stamp with the refund id.
 
 A **DEFENSIBLE** verdict never refunds. A refund is idempotent (`PayPal-Request-Id: mandate-refund-<dispute id>`), so a retry cannot pay twice. If PayPal refuses, a `refund_failed` record is written and the dispute stays open so it can be retried. On a **real** PayPal dispute, PayPal's own accept-claim refunds the buyer, so Sentry does not refund again: it records the refund when the `PAYMENT.CAPTURE.REFUNDED` webhook arrives.
@@ -427,6 +439,7 @@ For a local 9router gateway (default address `http://localhost:20128`) use its k
 | `PAYPAL_BUYER_EMAIL` | | Sandbox buyer email, for reference |
 | `PAYPAL_WEBHOOK_ID` | | Required when `WEBHOOK_VERIFY=paypal` |
 | `WEBHOOK_VERIFY` | `paypal` | `paypal` = verify signatures · `off` = accept unverified (recorded as `verified:false`) |
+| `APPROVAL_HOLD` | `off` | `authorize` = a purchase that needs human approval is held at PayPal (authorization) until the human decides: approve captures, reject or a failed re-check voids. Needs `CHECKOUT_MODE=card` |
 | `CHECKOUT_MODE` | `payer_approval` | `payer_approval` (buyer approves at PayPal) or `card` (pays with PayPal's published sandbox test Visa, so the order is captured at once with no buyer login; good for a hosted demo that judges can try end to end, including the refund) |
 | `AGENT_MODE` | `live` | `live` = Claude tool-calling (needs `ANTHROPIC_API_KEY`) · `mock` = deterministic keyword parser · `engine` = on-server semantic engine, no key and no external AI service |
 | `ENGINE_MODEL` / `ENGINE_MODEL_DIR` | `Xenova/all-MiniLM-L6-v2` / `./models` | Embedding model for `engine` mode and where it is cached (`npm run build:engine` downloads it) |

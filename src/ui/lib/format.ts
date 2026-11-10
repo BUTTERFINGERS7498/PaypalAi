@@ -41,6 +41,8 @@ export const DECISION_LABEL: Record<string, string> = {
   clarify: "Agent asked a question",
   refunded: "Refunded at PayPal",
   refund_failed: "Refund failed at PayPal",
+  authorized: "Money held at PayPal",
+  voided: "Hold released at PayPal",
 };
 
 export const REASON_LABEL: Record<string, string> = {

@@ -6,6 +6,9 @@ Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-r
 ## Breaking changes
 _Newest first. Every breaking change gets a dated line here._
 
+- 2026-11-11 (additive, not breaking) — holds: env `APPROVAL_HOLD=authorize` (with `CHECKOUT_MODE=card`); purchase field
+  `paypal_authorization_id` (new column, migrated on boot); evidence decisions `authorized`, `voided`; `captured` gains
+  `data.source: "authorization"`. Refund webhook now only frees the budget for a COMPLETED refund covering the full amount.
 - 2026-11-11 (additive, not breaking) — refund on breach: purchase status `refunded`; evidence decisions `refunded`,
   `refund_failed`; `DisputePacket.refund`; webhook `PAYMENT.CAPTURE.REFUNDED`; `CHECKOUT_MODE=card` now pays with
   PayPal's published sandbox test card (the order is created already captured).
@@ -90,6 +93,7 @@ deterministic. In-memory and per process (they reset on restart).
 | `PAYPAL_BUYER_EMAIL` | no | — | sandbox **personal** (buyer) account email, shown in the console |
 | `PAYPAL_WEBHOOK_ID` | if `WEBHOOK_VERIFY=paypal` | — | |
 | `WEBHOOK_VERIFY` | no | `paypal` | `paypal` verify signature; `off` accept unverified (stored `verified:false`) |
+| `APPROVAL_HOLD` | no | `off` | `authorize`: a purchase needing human approval is held at PayPal (order intent `AUTHORIZE`, authorization placed at create with the sandbox test card). Approve → re-check → `POST /v2/payments/authorizations/{id}/capture`; reject or failed re-check → `.../void`. Only with `CHECKOUT_MODE=card` |
 | `CHECKOUT_MODE` | no | `payer_approval` | `payer_approval` order waits for the buyer to approve at PayPal (`awaiting_payer`); `card` pays with PayPal's published sandbox test Visa: the create call returns the capture, so the purchase completes at once (verified on the sandbox 2026-11-11) |
 | `ANTHROPIC_API_KEY` | if `AGENT_MODE=live` | — | |
 | `ANTHROPIC_BASE_URL` | no | — | gateway such as 9router `http://localhost:20128` (a trailing `/v1` is stripped); then the key is the gateway's |
@@ -410,7 +414,7 @@ Envelope: `{ "id": "WH-…", "event_type": "…", "resource_type": "…", "creat
 | `CHECKOUT.ORDER.APPROVED` | `resource.id` (order id) | purchase `awaiting_payer` → capture executes through the gate → `completed`; evidence `captured` |
 | `PAYMENT.CAPTURE.COMPLETED` | `resource.id` (capture id), `resource.supplementary_data.related_ids.order_id` | purchase → `completed` if not already; `paypal_capture_id` set |
 | `PAYMENT.CAPTURE.DENIED` | same | purchase → `failed` |
-| `PAYMENT.CAPTURE.REFUNDED` | `resource.id` (refund id), `resource.status`, `resource.links[rel=up]` (the capture) | purchase → `refunded` if not already; evidence `refunded` with `data.source: "accept_claim"` (recorded once) |
+| `PAYMENT.CAPTURE.REFUNDED` | `resource.id` (refund id), `resource.status`, `resource.amount`, `resource.seller_payable_breakdown.total_refunded_amount`, `resource.links[rel=up]` (the capture) | evidence `refunded` (`data.final`, recorded once per refund id + status); purchase → `refunded` only if `COMPLETED` and the total refunded covers the purchase amount |
 | `CUSTOMER.DISPUTE.CREATED` | `resource.dispute_id`, `resource.disputed_transactions[0].seller_transaction_id` / order id, `resource.reason`, `resource.dispute_amount` | create/link a Dispute (`open`); purchase → `disputed` |
 | `CUSTOMER.DISPUTE.UPDATED` | `resource.dispute_id`, `resource.status` | update the Dispute |
 | `CUSTOMER.DISPUTE.RESOLVED` | `resource.dispute_id` | Dispute → `resolved`; purchase → `dispute_resolved` |

@@ -63,7 +63,7 @@ function DisputeCard({ d }: { d: Dispute }) {
               <div className="row wrap" style={{ gap: 14 }}>
                 <Stamp tone="info" large pop tilt={-3}>Refunded</Stamp>
                 <div>
-                  <strong>{fmtMoney(pk.refund.amount)} returned to the buyer {health?.paypal_mode === "sandbox" ? "at the PayPal sandbox" : "(mock PayPal: no real call)"}</strong>
+                  <strong>{fmtMoney(pk.refund.amount)} {pk.refund.status === "COMPLETED" ? "returned to the buyer" : "refund pending (the purchase still counts until PayPal completes it)"} {health?.paypal_mode === "sandbox" ? "at the PayPal sandbox" : "(mock PayPal: no real call)"}</strong>
                   <div className="small muted">
                     refund <span className="mono">{pk.refund.paypal_refund_id}</span> · {pk.refund.status} · {fmtTime(pk.refund.refunded_at)} ·{" "}
                     {pk.refund.source === "refund_api" ? "issued by Sentry through the PayPal refund API" : "issued by PayPal when the claim was accepted"}

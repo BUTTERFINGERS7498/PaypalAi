@@ -15,7 +15,14 @@ export function openDb(databasePath: string): Db {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   if (!existsSync(SCHEMA_PATH)) throw new Error(`Schema not found at ${SCHEMA_PATH} (owned by platform, db/schema.sql).`);
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
+  migrate(db);
   return db;
+}
+
+/** Additive column migrations for databases created before a column existed (CREATE TABLE IF NOT EXISTS skips them). */
+function migrate(db: Db): void {
+  const has = (table: string, col: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === col);
+  if (!has('purchases', 'paypal_authorization_id')) db.exec('ALTER TABLE purchases ADD COLUMN paypal_authorization_id TEXT');
 }
 
 /** Run fn inside an immediate transaction (node:sqlite has no helper). Not re-entrant. */

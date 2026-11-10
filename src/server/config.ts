@@ -16,6 +16,9 @@ export interface Config {
   paypalWebhookId: string;
   webhookVerify: WebhookVerify;
   checkoutMode: CheckoutMode;
+  /** 'authorize' = a purchase that needs human approval is held at PayPal (authorization) until the human decides.
+   *  Only takes effect with CHECKOUT_MODE=card, where the hold can be placed without a buyer login. */
+  approvalHold: 'off' | 'authorize';
   anthropicApiKey: string;
   anthropicBaseUrl: string;
   anthropicModel: string;
@@ -69,6 +72,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     paypalWebhookId: env.PAYPAL_WEBHOOK_ID ?? '',
     webhookVerify: pick('WEBHOOK_VERIFY', env.WEBHOOK_VERIFY, ['paypal', 'off'] as const, 'paypal'),
     checkoutMode: pick('CHECKOUT_MODE', env.CHECKOUT_MODE, ['payer_approval', 'card'] as const, 'payer_approval'),
+    approvalHold: pick('APPROVAL_HOLD', env.APPROVAL_HOLD, ['off', 'authorize'] as const, 'off'),
     anthropicApiKey: env.ANTHROPIC_API_KEY ?? '',
     // The SDK appends /v1/messages itself, so accept either http://host:port or http://host:port/v1.
     anthropicBaseUrl: (env.ANTHROPIC_BASE_URL ?? '').trim().replace(/\/+$/, '').replace(/\/v1$/, ''),

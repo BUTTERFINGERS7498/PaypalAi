@@ -32,7 +32,10 @@ function Receipts({ purchases, label }: { purchases: Purchase[]; label: (id: str
           <article key={p.id} className={`sx-rcpt ${p.within_mandate ? "" : "breach"} ${dim ? "dim" : ""}`} aria-label={`Receipt: ${p.item_name}`}>
             <div className="row spread">
               <span className="sx-kicker">{fmtTime(p.created_at)}</span>
-              <StatusChip status={p.status} />
+              <span className="row" style={{ gap: 4 }}>
+                <StatusChip status={p.status} />
+                {p.status === "pending_approval" && p.paypal_authorization_id && <Chip tone="info" title={`PayPal authorization ${p.paypal_authorization_id}`}>held</Chip>}
+              </span>
             </div>
             <h3 style={{ margin: "8px 0 2px" }}>{p.item_name}</h3>
             <p className="muted small mono">{p.sku} · {p.category}</p>
@@ -140,17 +143,23 @@ function ApprovalQueue() {
       <ul className="plain">
         {approvals.map((a) => {
           const p = purchases.find((x) => x.id === a.purchase_id);
+          const held = !!p?.paypal_authorization_id;
           return (
             <li key={a.id} className="sx-approval">
               <div>
                 <strong>{a.summary}</strong>
+                {held && p && (
+                  <div style={{ margin: "4px 0" }}>
+                    <Chip tone="info" title={`PayPal authorization ${p.paypal_authorization_id}`}>{fmtMoney(p.amount)} held at PayPal · not charged yet</Chip>
+                  </div>
+                )}
                 <div className="muted small">
                   {a.reasons.map(reasonLabel).join(", ")} · requested {fmtTime(a.created_at)} · decision recorded as “{operator}”
                 </div>
               </div>
               <div className="row wrap">
-                <button className="sx-btn primary" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "approve", { decided_by: operator }))}>Approve</button>
-                <button className="sx-btn danger" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "reject", { decided_by: operator }))}>Reject</button>
+                <button className="sx-btn primary" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "approve", { decided_by: operator }))}>{held ? "Approve and capture" : "Approve"}</button>
+                <button className="sx-btn danger" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "reject", { decided_by: operator }))}>{held ? "Reject and release hold" : "Reject"}</button>
                 {p && <button className="sx-btn" onClick={() => go("evidence", p.id)}>Evidence</button>}
               </div>
             </li>

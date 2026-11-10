@@ -64,6 +64,8 @@ export interface Purchase {
   paypal_order_id: string | null;
   approve_url: string | null;
   paypal_capture_id: string | null;
+  /** Set while the money is held at PayPal for a human decision (APPROVAL_HOLD=authorize). */
+  paypal_authorization_id: string | null;
   approval_id: string | null;
   dispute_id: string | null;
   created_at: string;
@@ -85,7 +87,8 @@ export interface Approval {
 
 export type EvidenceDecision =
   | 'selected' | 'needs_approval' | 'blocked' | 'no_match' | 'approved' | 'rejected'
-  | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked' | 'clarify' | 'refunded' | 'refund_failed';
+  | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked' | 'clarify' | 'refunded' | 'refund_failed'
+  | 'authorized' | 'voided';
 
 export interface EvidenceOption {
   sku: string;

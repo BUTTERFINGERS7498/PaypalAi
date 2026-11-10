@@ -25,7 +25,7 @@ function rowToPurchase(r: Row): Purchase {
     category: r.category, amount: { currency_code: r.currency_code, value: r.amount_value }, status: r.status,
     within_mandate: !!r.within_mandate, breaches: parse<string[]>(r.breaches, []), demo_rogue: !!r.demo_rogue,
     request_id: r.request_id ?? null, paypal_order_id: r.paypal_order_id ?? null, approve_url: r.approve_url ?? null,
-    paypal_capture_id: r.paypal_capture_id ?? null, approval_id: r.approval_id ?? null, dispute_id: r.dispute_id ?? null,
+    paypal_capture_id: r.paypal_capture_id ?? null, paypal_authorization_id: r.paypal_authorization_id ?? null, approval_id: r.approval_id ?? null, dispute_id: r.dispute_id ?? null,
     created_at: r.created_at, updated_at: r.updated_at, completed_at: r.completed_at ?? null,
   };
 }
@@ -70,7 +70,7 @@ export interface NewPurchase {
 }
 
 export type PurchasePatch = Partial<{
-  status: PurchaseStatus; paypal_order_id: string; approve_url: string; paypal_capture_id: string;
+  status: PurchaseStatus; paypal_order_id: string; approve_url: string; paypal_capture_id: string; paypal_authorization_id: string;
   approval_id: string; dispute_id: string; completed_at: string; within_mandate: boolean; breaches: string[];
 }>;
 

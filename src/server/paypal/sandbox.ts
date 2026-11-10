@@ -76,10 +76,11 @@ export class SandboxPaypalClient implements PaypalClient {
     return data;
   }
 
-  async createOrder(ticket: ApprovalTicket, p: Purchase): Promise<CreatedOrder> {
+  async createOrder(ticket: ApprovalTicket, p: Purchase, opts: { intent?: 'CAPTURE' | 'AUTHORIZE' } = {}): Promise<CreatedOrder> {
     assertTicket(ticket);
+    const intent = opts.intent ?? 'CAPTURE';
     const body: Record<string, unknown> = {
-      intent: 'CAPTURE',
+      intent,
       purchase_units: [{
         reference_id: p.id,
         custom_id: p.id,
@@ -102,11 +103,32 @@ export class SandboxPaypalClient implements PaypalClient {
       };
     }
     // PayPal-Request-Id makes the create idempotent per purchase.
-    const res = await this.call('POST', '/v2/checkout/orders', body, { 'paypal-request-id': `mandate-order-${p.id}`, prefer: 'return=representation' });
+    const res = await this.call('POST', '/v2/checkout/orders', body, { 'paypal-request-id': `mandate-order-${p.id}${intent === 'AUTHORIZE' ? '-hold' : ''}`, prefer: 'return=representation' });
     if (!res.id) throw new PaypalError('PayPal create order returned no id', 502, null);
     const link = Array.isArray(res.links) ? res.links.find((l: any) => l.rel === 'payer-action' || l.rel === 'approve') : null;
     const capture = res.purchase_units?.[0]?.payments?.captures?.[0];
-    return { paypal_order_id: res.id, approve_url: link?.href ?? null, status: res.status ?? 'CREATED', capture_id: capture?.status === 'COMPLETED' ? String(capture.id) : null };
+    const auth = res.purchase_units?.[0]?.payments?.authorizations?.[0];
+    return {
+      paypal_order_id: res.id, approve_url: link?.href ?? null, status: res.status ?? 'CREATED',
+      capture_id: capture?.status === 'COMPLETED' ? String(capture.id) : null,
+      authorization_id: auth && (auth.status === 'CREATED' || auth.status === 'PENDING') ? String(auth.id) : null,
+      authorization_expires: auth?.expiration_time ?? null,
+    };
+  }
+
+  async captureAuthorization(ticket: ApprovalTicket, authorizationId: string, requestId: string): Promise<CapturedOrder> {
+    assertTicket(ticket);
+    const res = await this.call('POST', `/v2/payments/authorizations/${encodeURIComponent(authorizationId)}/capture`, { final_capture: true },
+      { 'paypal-request-id': `mandate-auth-capture-${requestId}`, prefer: 'return=representation' });
+    if (!res.id) throw new PaypalError('PayPal authorization capture returned no id', 502, null);
+    return { paypal_capture_id: String(res.id) };
+  }
+
+  async voidAuthorization(ticket: ApprovalTicket, authorizationId: string): Promise<{ status: string }> {
+    assertTicket(ticket);
+    // Checked 2026-11-11: returns 200 VOIDED with Prefer: return=representation (204 without it).
+    const res = await this.call('POST', `/v2/payments/authorizations/${encodeURIComponent(authorizationId)}/void`, undefined, { prefer: 'return=representation' });
+    return { status: String(res.status ?? 'VOIDED') };
   }
 
   async captureOrder(ticket: ApprovalTicket, orderId: string): Promise<CapturedOrder> {
