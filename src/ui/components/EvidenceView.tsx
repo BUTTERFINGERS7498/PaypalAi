@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { DECISION_LABEL, fmtMoney, fmtTime, short } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { ChainVerify, EvidenceRecord } from "../lib/types";
@@ -8,14 +9,18 @@ import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
 function Record({ r, index }: { r: EvidenceRecord; index: number }) {
   const agent = ["selected", "needs_approval", "blocked", "no_match"].includes(r.decision);
   return (
-    <li className="evd" aria-label={`Step ${index + 1}: ${DECISION_LABEL[r.decision] ?? r.decision}`}>
-      <div className="evd-head">
-        <span className="step">{index + 1}</span>
+    <li className="sx-link" style={{ ["--i" as string]: index } as CSSProperties} aria-label={`Step ${index + 1}: ${DECISION_LABEL[r.decision] ?? r.decision}`}>
+      <div className="sx-rail-line" aria-hidden="true">
+        <span className={`sx-node ${r.within_mandate ? "" : "bad"}`}>{index + 1}</span>
+        <span className="sx-wire" />
+      </div>
+      <div className="sx-rec">
+      <div className="sx-rec-head">
         <div>
           <h4>{DECISION_LABEL[r.decision] ?? r.decision}</h4>
           <div className="muted small">{fmtTime(r.timestamp)} · seq {r.seq} · <span className="mono">{r.record_id}</span></div>
         </div>
-        <Flags within={r.within_mandate} breaches={r.breaches} rogue={r.demo_rogue} />
+        <Flags within={r.within_mandate} breaches={r.breaches} rogue={r.demo_rogue} stamp />
       </div>
 
       {agent && r.user_instruction && (
@@ -23,7 +28,7 @@ function Record({ r, index }: { r: EvidenceRecord; index: number }) {
       )}
 
       {r.options_seen.length > 0 && (
-        <div className="table-wrap">
+        <div className="sx-table-wrap">
           <table>
             <caption className="lbl">Options the agent saw</caption>
             <thead><tr><th scope="col">SKU</th><th scope="col">Item</th><th scope="col">Category</th><th scope="col" className="num">Price (USD)</th><th scope="col">Chosen</th></tr></thead>
@@ -50,10 +55,11 @@ function Record({ r, index }: { r: EvidenceRecord; index: number }) {
       </p>
       {r.paypal_order_id && <p><span className="lbl">PayPal sandbox order</span> <span className="mono">{r.paypal_order_id}</span></p>}
       {Object.keys(r.data).length > 0 && <p><span className="lbl">Details</span> <span className="mono small">{JSON.stringify(r.data)}</span></p>}
-      <p className="hashes small">
-        <span className="lbl">hash</span> <span className="mono" title={r.hash}>{short(r.hash, 12)}</span>
-        <span className="lbl">prev_hash</span> <span className="mono" title={r.prev_hash}>{short(r.prev_hash, 12)}</span>
-      </p>
+      <div className="sx-hash small">
+        <span className="lbl">hash</span><span className="mono" title={r.hash}>{short(r.hash, 12)}</span>
+        <span className="lbl">prev_hash</span><span className="mono" title={r.prev_hash}>{short(r.prev_hash, 12)}</span>
+      </div>
+      </div>
     </li>
   );
 }
@@ -95,7 +101,7 @@ export default function EvidenceView() {
     <div className="stack">
       <Section id="evd-h" title="Evidence trail">
         <p className="muted">Every agent decision writes one append-only, hash-chained record, oldest first. Each hash covers the previous one, so editing history is detectable.</p>
-        <div className="form-grid">
+        <div className="sx-form">
           <label htmlFor="evd-purchase">Purchase</label>
           <select id="evd-purchase" value={current} onChange={(e) => setPid(e.target.value)}>
             {purchases.length === 0 && <option value="">No purchases yet</option>}
@@ -111,10 +117,10 @@ export default function EvidenceView() {
             {trailValid !== null && (
               <Chip tone={trailValid ? "ok" : "bad"}>{trailValid ? "✔ Chain valid for this trail" : "✖ Chain INVALID"}</Chip>
             )}
-            <button className="btn" disabled={verify.busy} onClick={async () => { const r = await verify.run(() => api.verifyChain()); if (r) setChain(r); }}>
+            <button className="sx-btn" disabled={verify.busy} onClick={async () => { const r = await verify.run(() => api.verifyChain()); if (r) setChain(r); }}>
               {verify.busy ? "Verifying…" : "Verify whole chain"}
             </button>
-            <button className="btn" onClick={() => go("disputes")}>Go to disputes</button>
+            <button className="sx-btn" onClick={() => go("disputes")}>Go to disputes</button>
           </div>
         )}
         {verify.error && <Notice kind="error">{verify.error}</Notice>}
@@ -129,7 +135,7 @@ export default function EvidenceView() {
       </Section>
 
       {purchase && records.length === 0 && !load.busy && !load.error && <Notice kind="info">No evidence records for this purchase.</Notice>}
-      <ol className="timeline">
+      <ol className={`sx-chain ${chain?.valid ? "verified" : ""}`}>
         {records.map((r, i) => <Record key={r.record_id} r={r} index={i} />)}
       </ol>
     </div>

@@ -1,6 +1,6 @@
 # CONTEXT.md — Sentry (PayPal AI Hackathon)
 
-Last updated: 2026-11-08 (late evening IST). Deadline: **Thu Nov 12, 2026, 12:00 pm PT**.
+Last updated: 2026-11-11 (IST). Deadline: **Thu Nov 12, 2026, 12:00 pm PT**.
 Plan of record: `implementation-plan.pdf` (a private planning file, git-ignored). API of record: `docs/api-contract.md`.
 Repo: https://github.com/BUTTERFINGERS7498/PaypalAi (currently **private**; must be public to submit), 21 commits on `main`,
 sole author BUTTERFINGERS7498. Hosted demo: https://mandate-ledger.onrender.com (Render free, auto-deploys from `main`).
@@ -19,6 +19,11 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **Console UI rebuilt (2026-11-11, uncommitted):** direction "The Leash + Notary". New `src/ui/app/console.css` (scoped under `.sx`, landing untouched),
+  left-rail `Shell.tsx`, new `FenceView.tsx` (SVG map: cap ring, approval ring, hatched outside band, one dot per purchase), mandates as signed documents,
+  ledger as receipts with a Table (AG Grid, themed) toggle, evidence as a chain that turns green on verify, disputes as case list + dossier with verdict stamp.
+  `TabId` gained `"fence"` (default tab). The landing page (`Landing.tsx`, `landing.css`) was rebuilt in the same style: hero is a live fence with cap/threshold/price sliders and a verdict stamp; story as stamped paper cards; walkthrough, product cards and honesty section restyled. No data logic changed. Checked by screenshots at 1440 px and 390 px; `npm test` 36 pass, `npm run test:e2e` 4 pass, 1 skipped.
+- **Demo voice changed:** `demo/sentry-demo-3min.mp4` now has an Edge neural voice ("Andrew") mixed over the old picture (commit 8b2351f, pushed). Captions are still burned into that picture.
 - **Backend** (`src/server`): signed + versioned mandates (ed25519), deterministic checker, gate (only place that mints PayPal
   tickets), hash-chained evidence (tamper detected), approvals, rogue demo, disputes (verdict by code), webhooks (signature
   verified, idempotent), SSE, seed adapter, PayPal sandbox + mock clients.
@@ -48,6 +53,7 @@ To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `h
 - **README** rewritten (hero + screenshots in `docs/media/`, real-vs-simulated table, setup, Render, API, troubleshooting).
 
 ## Half-finished / unverified
+- **Stale after the UI rebuild:** README screenshots/GIFs in `docs/media/` and all demo videos in `demo/` show the OLD console. Retake them if wanted. The part-A recording take in `demo/cut/.screenplay/takes/part-a` was lost, so the 3-min cut cannot be re-rendered without re-filming.
 - **A full agent request on the hosted console is unverified:** the agent needs the approval password (the human has it; the
   assistant does not). Engine + real PayPal sandbox together is untested (engine only ran against mock PayPal).
 - **Real PayPal dispute round trip:** `POST /v1/customer/disputes` passes schema validation but PayPal answers

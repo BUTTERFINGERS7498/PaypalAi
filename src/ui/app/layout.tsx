@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import "./landing.css";
+import "./console.css";
 
 export const metadata: Metadata = {
   title: "Sentry: receipts for AI agent payments",

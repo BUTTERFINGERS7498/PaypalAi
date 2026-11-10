@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
+import { AllCommunityModule, ModuleRegistry, themeQuartz } from "ag-grid-community";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { fmtMoney, fmtTime } from "../lib/format";
@@ -9,6 +9,49 @@ import type { AgentResult, Purchase } from "../lib/types";
 import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+const gridTheme = themeQuartz.withParams({
+  backgroundColor: "#fffdf8",
+  foregroundColor: "#17130f",
+  headerBackgroundColor: "#ebe3d2",
+  headerTextColor: "#17130f",
+  borderColor: "#d9cdb6",
+  rowHoverColor: "#f4efe5",
+  accentColor: "#17130f",
+  fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+  wrapperBorderRadius: 12,
+});
+
+function Receipts({ purchases, label }: { purchases: Purchase[]; label: (id: string) => string }) {
+  const { go } = useStore();
+  return (
+    <div className="sx-rcpts">
+      {purchases.map((p) => {
+        const dim = p.status === "rejected" || p.status === "failed";
+        return (
+          <article key={p.id} className={`sx-rcpt ${p.within_mandate ? "" : "breach"} ${dim ? "dim" : ""}`} aria-label={`Receipt: ${p.item_name}`}>
+            <div className="row spread">
+              <span className="sx-kicker">{fmtTime(p.created_at)}</span>
+              <StatusChip status={p.status} />
+            </div>
+            <h3 style={{ margin: "8px 0 2px" }}>{p.item_name}</h3>
+            <p className="muted small mono">{p.sku} · {p.category}</p>
+            <div className="amt">{fmtMoney(p.amount)}</div>
+            <hr />
+            <div className="stampzone"><Flags within={p.within_mandate} breaches={p.breaches} rogue={p.demo_rogue} stamp /></div>
+            <p className="small muted" style={{ margin: "10px 0" }}>{label(p.mandate_id)} v{p.mandate_version}</p>
+            <div className="row wrap">
+              <button className="sx-btn sm" onClick={() => go("evidence", p.id)}>Evidence</button>
+              {p.status === "awaiting_payer" && p.approve_url && (
+                <a className="sx-btn sm" href={p.approve_url} target="_blank" rel="noopener noreferrer">Open PayPal to approve</a>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 
 function AskAgent() {
   const { api, mandates, go, health } = useStore();
@@ -28,7 +71,7 @@ function AskAgent() {
         </p>
       )}
       <form
-        className="form-grid"
+        className="sx-form"
         onSubmit={async (e) => {
           e.preventDefault();
           setResult(null);
@@ -43,8 +86,8 @@ function AskAgent() {
         </select>
         <label htmlFor="agent-text">Instruction (plain English)</label>
         <input id="agent-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. restock the pantry basics" required />
-        <div className={`rogue ${rogue ? "rogue-on" : ""}`}>
-          <label className="check">
+        <div className={`sx-rogue ${rogue ? "on" : ""}`}>
+          <label className="sx-check">
             <input type="checkbox" checked={rogue} onChange={(e) => setRogue(e.target.checked)} />
             <span><strong>Demo: let the agent break its mandate</strong></span>
           </label>
@@ -53,7 +96,7 @@ function AskAgent() {
           </p>
         </div>
         <div className="row">
-          <button className="btn primary" disabled={act.busy || !selected || !text.trim()}>{act.busy ? "Agent is working…" : "Send to agent"}</button>
+          <button className="sx-btn primary" disabled={act.busy || !selected || !text.trim()}>{act.busy ? "Agent is working…" : "Send to agent"}</button>
         </div>
       </form>
       {act.error && <Notice kind="error">{act.error}</Notice>}
@@ -65,9 +108,9 @@ function AskAgent() {
           </p>
           <div className="row wrap">
             {result.purchase?.approve_url && (
-              <a className="btn" href={result.purchase.approve_url} target="_blank" rel="noopener noreferrer">Open PayPal to approve (sandbox)</a>
+              <a className="sx-btn" href={result.purchase.approve_url} target="_blank" rel="noopener noreferrer">Open PayPal to approve (sandbox)</a>
             )}
-            {result.purchase && <button className="btn" onClick={() => go("evidence", result.purchase!.id)}>View evidence trail</button>}
+            {result.purchase && <button className="sx-btn" onClick={() => go("evidence", result.purchase!.id)}>View evidence trail</button>}
           </div>
         </Notice>
       )}
@@ -86,7 +129,7 @@ function ApprovalQueue() {
         {approvals.map((a) => {
           const p = purchases.find((x) => x.id === a.purchase_id);
           return (
-            <li key={a.id} className="approval">
+            <li key={a.id} className="sx-approval">
               <div>
                 <strong>{a.summary}</strong>
                 <div className="muted small">
@@ -94,9 +137,9 @@ function ApprovalQueue() {
                 </div>
               </div>
               <div className="row wrap">
-                <button className="btn primary" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "approve", { decided_by: operator }))}>Approve</button>
-                <button className="btn danger" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "reject", { decided_by: operator }))}>Reject</button>
-                {p && <button className="btn" onClick={() => go("evidence", p.id)}>Evidence</button>}
+                <button className="sx-btn primary" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "approve", { decided_by: operator }))}>Approve</button>
+                <button className="sx-btn danger" disabled={act.busy} onClick={() => act.run(() => api.decideApproval(a.id, "reject", { decided_by: operator }))}>Reject</button>
+                {p && <button className="sx-btn" onClick={() => go("evidence", p.id)}>Evidence</button>}
               </div>
             </li>
           );
@@ -109,6 +152,7 @@ function ApprovalQueue() {
 export default function LedgerView() {
   const { purchases, mandates, go, live, api } = useStore();
   const [sel, setSel] = useState<string | null>(null);
+  const [mode, setMode] = useState<"receipts" | "table">("receipts");
   const label = (id: string) => mandates.find((m) => m.id === id)?.label ?? id;
 
   const cols = useMemo<ColDef<Purchase>[]>(
@@ -134,9 +178,9 @@ export default function LedgerView() {
         cellRenderer: (p: ICellRendererParams<Purchase>) =>
           p.data ? (
             <span className="row">
-              <button className="btn small-btn" onClick={() => go("evidence", p.data!.id)}>Evidence</button>
+              <button className="sx-btn sm" onClick={() => go("evidence", p.data!.id)}>Evidence</button>
               {p.data.status === "awaiting_payer" && p.data.approve_url && (
-                <a className="btn small-btn" href={p.data.approve_url} target="_blank" rel="noopener noreferrer">Open PayPal to approve</a>
+                <a className="sx-btn sm" href={p.data.approve_url} target="_blank" rel="noopener noreferrer">Open PayPal to approve</a>
               )}
             </span>
           ) : null,
@@ -153,9 +197,18 @@ export default function LedgerView() {
       <Section
         id="ledger-h"
         title="Purchase ledger"
-        actions={<Chip tone={live ? "ok" : "neutral"} title="Rows update as server-sent events arrive">{api.kind === "mock" ? "Live (mock events)" : live ? "Live (SSE)" : "Connecting…"}</Chip>}
+        actions={
+          <span className="row wrap">
+            <span className="sx-seg" role="group" aria-label="Ledger layout">
+              <button aria-pressed={mode === "receipts"} onClick={() => setMode("receipts")}>Receipts</button>
+              <button aria-pressed={mode === "table"} onClick={() => setMode("table")}>Table</button>
+            </span>
+            <Chip tone={live ? "ok" : "neutral"} title="Rows update as server-sent events arrive">{api.kind === "mock" ? "Live (mock events)" : live ? "Live (SSE)" : "Connecting…"}</Chip>
+          </span>
+        }
       >
         {purchases.length === 0 && <p className="muted">No purchases yet. Send an instruction above.</p>}
+        {mode === "receipts" ? <Receipts purchases={[...purchases].sort((a, b) => b.created_at.localeCompare(a.created_at))} label={label} /> : (
         <div className="grid-wrap">
           <AgGridReact<Purchase>
             rowData={purchases}
@@ -167,8 +220,9 @@ export default function LedgerView() {
             rowClassRules={{ "row-breach": (p) => !!p.data && !p.data.within_mandate }}
             overlayNoRowsTemplate="No purchases"
             suppressCellFocus={false}
+            theme={gridTheme}
           />
-        </div>
+        </div>)}
         {sel && <p className="muted small">Selected {sel}. Use the Evidence button on the row to follow it to its trail.</p>}
       </Section>
     </div>

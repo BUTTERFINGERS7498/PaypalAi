@@ -4,139 +4,92 @@ import type { ReactNode } from "react";
 import { useStore } from "../lib/store";
 import type { TabId } from "../lib/store";
 import { agentLabel } from "../lib/types";
+import { Chip, Stamp } from "./ui";
 
-/* ----------------------------- small illustrations ----------------------------- */
+/* ------------------------------ hero: a fence you can drag ------------------------------ */
 
-function Robot({ mood }: { mood: "worried" | "happy" | "calm" }) {
+const C = 260;
+const R = 150;
+const OUT = 222;
+const TAU = Math.PI * 2;
+const START = -Math.PI / 2;
+const IN_SHARE = 0.78;
+
+const dist = (amt: number, cap: number) => R * (0.38 + 0.62 * Math.sqrt(Math.min(Math.max(amt / cap, 0), 1.5)));
+const pol = (r: number, a: number) => ({ x: C + r * Math.cos(a), y: C + r * Math.sin(a) });
+
+type Cat = "groceries" | "electronics";
+
+function HeroFence() {
+  const [cap, setCap] = useState(200);
+  const [appr, setAppr] = useState(75);
+  const [price, setPrice] = useState(18);
+  const [cat, setCat] = useState<Cat>("groceries");
+  const apprEff = Math.min(appr, cap);
+
+  const catOk = cat === "groceries";
+  const overCap = price > cap;
+  const verdict: "ok" | "ask" | "bad" = !catOk || overCap ? "bad" : price > apprEff ? "ask" : "ok";
+
+  let r = dist(price, cap);
+  const a = catOk ? START + TAU * IN_SHARE * 0.5 : START + TAU * IN_SHARE + TAU * (1 - IN_SHARE) * 0.5;
+  if (!catOk) r = Math.max(r, R * 1.12);
+  r = Math.min(r, OUT - 12);
+  const dot = pol(r, a);
+  const thr = dist(apprEff, cap);
+  const labelOk = pol(R + 22, START + TAU * IN_SHARE * 0.5);
+  const labelOut = pol(OUT + 14, START + TAU * IN_SHARE + TAU * (1 - IN_SHARE) * 0.5);
+  const tone = verdict === "ok" ? "ok" : verdict === "ask" ? "warn" : "bad";
+  const stampText = verdict === "ok" ? "Within mandate" : verdict === "ask" ? "Needs your approval" : "Outside mandate";
+
   return (
-    <g className="rb">
-      <line x1="60" y1="14" x2="60" y2="26" stroke="#0f1b2d" strokeWidth="3" strokeLinecap="round" />
-      <circle cx="60" cy="12" r="5" fill="#f59e0b" className="rb-ant" />
-      <rect x="30" y="26" width="60" height="46" rx="14" fill="#e8eefc" stroke="#0f1b2d" strokeWidth="3" />
-      <circle cx="47" cy="48" r="5" fill="#0f1b2d" />
-      <circle cx="73" cy="48" r="5" fill="#0f1b2d" />
-      {mood === "worried" && <path d="M48 62 q12 -7 24 0" fill="none" stroke="#0f1b2d" strokeWidth="3" strokeLinecap="round" />}
-      {mood === "happy" && <path d="M48 58 q12 10 24 0" fill="none" stroke="#0f1b2d" strokeWidth="3" strokeLinecap="round" />}
-      {mood === "calm" && <path d="M50 60 h20" fill="none" stroke="#0f1b2d" strokeWidth="3" strokeLinecap="round" />}
-      <rect x="38" y="76" width="44" height="30" rx="10" fill="#1d3f9e" stroke="#0f1b2d" strokeWidth="3" />
-    </g>
-  );
-}
-
-function ProblemArt() {
-  return (
-    <svg viewBox="0 0 320 190" role="img" aria-label="A shopping robot, a basket holding a games console, and a puzzled person with a question mark" className="art">
-      <rect x="0" y="150" width="320" height="4" rx="2" fill="#d9e0ea" />
-      <g transform="translate(20 38)"><Robot mood="calm" /></g>
-      <g transform="translate(132 96)">
-        <path d="M0 0 h72 l-9 40 h-54 z" fill="#fff" stroke="#0f1b2d" strokeWidth="3" strokeLinejoin="round" />
-        <circle cx="16" cy="52" r="6" fill="#0f1b2d" /><circle cx="52" cy="52" r="6" fill="#0f1b2d" />
-        <rect x="14" y="-22" width="44" height="22" rx="4" fill="#fde2e1" stroke="#7a0f0b" strokeWidth="3" />
-        <circle cx="26" cy="-11" r="4" fill="#7a0f0b" /><rect x="40" y="-14" width="12" height="6" rx="2" fill="#7a0f0b" />
-      </g>
-      <text x="232" y="60" className="qm q1">?</text>
-      <text x="262" y="100" className="qm q2">?</text>
-      <text x="240" y="130" className="qm q3">?</text>
-    </svg>
-  );
-}
-
-function SlipArt() {
-  return (
-    <svg viewBox="0 0 320 190" role="img" aria-label="A signed permission slip, a checker with a tick, and a notebook of linked pages" className="art">
-      <rect x="0" y="150" width="320" height="4" rx="2" fill="#d9e0ea" />
-      <g transform="translate(10 22)">
-        <rect width="92" height="118" rx="8" fill="#fff" stroke="#0f1b2d" strokeWidth="3" />
-        <rect x="12" y="14" width="44" height="6" rx="3" fill="#1d3f9e" />
-        <rect x="12" y="30" width="68" height="5" rx="2.5" fill="#cfd6e0" />
-        <rect x="12" y="42" width="60" height="5" rx="2.5" fill="#cfd6e0" />
-        <rect x="12" y="54" width="64" height="5" rx="2.5" fill="#cfd6e0" />
-        <path className="sign" d="M14 96 q10 -22 20 0 t22 -4 t18 2" fill="none" stroke="#0f766e" strokeWidth="3.5" strokeLinecap="round" />
-      </g>
-      <g transform="translate(120 44)">
-        <circle cx="34" cy="34" r="32" fill="#e6f6f2" stroke="#0f766e" strokeWidth="3" />
-        <path className="tick" d="M18 36 l12 12 l22 -26" fill="none" stroke="#0f766e" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      </g>
-      <g transform="translate(212 40)">
-        {[0, 1, 2].map((i) => (
-          <g key={i} transform={`translate(0 ${i * 34})`}>
-            <g className={`page p${i}`}>
-              <rect width="92" height="28" rx="6" fill="#fff" stroke="#0f1b2d" strokeWidth="3" />
-              <rect x="10" y="9" width="40" height="5" rx="2.5" fill="#cfd6e0" />
-              <rect x="10" y="18" width="26" height="4" rx="2" fill="#1d3f9e" />
-              <circle cx="76" cy="14" r="5" fill="#f59e0b" />
-            </g>
+    <div className="lx-fence" aria-label="Interactive example of a spending mandate">
+      <div className="lx-map">
+        <svg viewBox="0 0 520 520" role="img" aria-label={`A purchase of $${price} in ${cat} against a $${cap} monthly cap is ${stampText.toLowerCase()}`}>
+          <defs>
+            <pattern id="lxhatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="9" height="9" fill="rgba(163,34,26,.04)" />
+              <line x1="0" y1="0" x2="0" y2="9" stroke="rgba(163,34,26,.22)" strokeWidth="2" />
+            </pattern>
+          </defs>
+          <circle cx={C} cy={C} r={OUT} fill="url(#lxhatch)" />
+          <circle className="lx-cap" cx={C} cy={C} r={R} />
+          <circle className="lx-thr" cx={C} cy={C} r={thr} />
+          <line className="lx-sep" x1={pol(R, START + TAU * IN_SHARE).x} y1={pol(R, START + TAU * IN_SHARE).y} x2={pol(OUT, START + TAU * IN_SHARE).x} y2={pol(OUT, START + TAU * IN_SHARE).y} />
+          <line className="lx-sep" x1={C} y1={C} x2={pol(R, START).x} y2={pol(R, START).y} />
+          <text x={labelOk.x} y={labelOk.y} textAnchor="middle" dominantBaseline="middle">groceries</text>
+          <text x={labelOut.x} y={labelOut.y} textAnchor="middle" dominantBaseline="middle" style={{ fill: "var(--wax)" }}>outside</text>
+          <text className="lx-ring" x={C} y={C - R - 8} textAnchor="middle">cap ${cap}</text>
+          <text className="lx-ring" x={C} y={C - thr - 6} textAnchor="middle">ask me above ${apprEff}</text>
+          <text className="lx-mid" x={C} y={C + 8} textAnchor="middle">${price}</text>
+          <g className={`lx-dot ${tone}`} style={{ transform: `translate(${dot.x}px, ${dot.y}px)` }}>
+            <circle className="halo" r="14" />
+            <circle className="core" r="10" />
           </g>
-        ))}
-        <path d="M46 28 v6 M46 62 v6" stroke="#0f1b2d" strokeWidth="3" strokeDasharray="2 3" />
-      </g>
-    </svg>
-  );
-}
+        </svg>
+        <div className="lx-stampbar" aria-live="polite">
+          <Stamp tone={tone} large tilt={-3} key={stampText}>{stampText}</Stamp>
+          <p className="small muted">
+            Checker (plain code): category {catOk ? "✓" : "✕"} · cap {overCap ? "✕" : "✓"} · approval line {price > apprEff && !overCap ? "reached" : "not reached"}
+          </p>
+        </div>
+      </div>
 
-function ResultArt() {
-  return (
-    <svg viewBox="0 0 320 190" role="img" aria-label="An open notebook with a green tick and a happy robot" className="art">
-      <rect x="0" y="150" width="320" height="4" rx="2" fill="#d9e0ea" />
-      <g transform="translate(190 40)"><Robot mood="happy" /></g>
-      <g transform="translate(22 34)">
-        <rect width="132" height="108" rx="10" fill="#fff" stroke="#0f1b2d" strokeWidth="3" />
-        <line x1="66" y1="6" x2="66" y2="102" stroke="#cfd6e0" strokeWidth="3" />
-        <rect x="14" y="20" width="40" height="5" rx="2.5" fill="#cfd6e0" />
-        <rect x="14" y="32" width="34" height="5" rx="2.5" fill="#cfd6e0" />
-        <rect x="14" y="44" width="38" height="5" rx="2.5" fill="#cfd6e0" />
-        <rect x="78" y="20" width="40" height="5" rx="2.5" fill="#cfd6e0" />
-        <g transform="translate(84 52)">
-          <g className="stamp">
-            <rect width="42" height="26" rx="5" fill="#dff3e4" stroke="#0d4a1f" strokeWidth="2.5" transform="rotate(-6 21 13)" />
-            <path d="M12 14 l6 6 l12 -13" fill="none" stroke="#0d4a1f" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" transform="rotate(-6 21 13)" />
-          </g>
-        </g>
-      </g>
-    </svg>
-  );
-}
-
-/* --------------------------------- hero visual --------------------------------- */
-
-function HeroFlow() {
-  return (
-    <div className="flow" aria-label="Example: a purchase travels from signed mandate to agent choice, to a hash-chained record, to a dispute verdict">
-      <div className="flow-tag">Example, step by step</div>
-      <ol className="flow-list">
-        <li className="fc fc1">
-          <span className="fc-n">1</span>
-          <div>
-            <strong>Permission slip</strong>
-            <p>Groceries only · $200 a month · ask me above $75</p>
-          </div>
-          <span className="chip chip-info">Signed · v1</span>
-        </li>
-        <li className="fc fc2">
-          <span className="fc-n">2</span>
-          <div>
-            <strong>Agent picks: Coffee beans 1kg, $18.00</strong>
-            <p>Checker (plain code): category ✓ budget ✓ under $75 ✓</p>
-          </div>
-          <span className="chip chip-ok">Within mandate</span>
-        </li>
-        <li className="fc fc3">
-          <span className="fc-n">3</span>
-          <div>
-            <strong>Written in the notebook</strong>
-            <p className="mono">prev 71b0…c3d8 → 9f2c…a41e</p>
-          </div>
-          <span className="chip chip-neutral">Linked</span>
-        </li>
-        <li className="fc fc4">
-          <span className="fc-n">4</span>
-          <div>
-            <strong>If the charge is disputed</strong>
-            <p>Evidence is assembled; the verdict comes from code</p>
-          </div>
-          <span className="chip chip-ok">Defensible</span>
-        </li>
-      </ol>
+      <div className="lx-controls">
+        <h2 className="lx-ctl-h">Draw your agent’s fence</h2>
+        <label htmlFor="lx-cap">Monthly cap <strong>${cap}</strong></label>
+        <input id="lx-cap" type="range" min={50} max={500} step={10} value={cap} onChange={(e) => setCap(Number(e.target.value))} />
+        <label htmlFor="lx-appr">Ask me first above <strong>${apprEff}</strong></label>
+        <input id="lx-appr" type="range" min={10} max={cap} step={5} value={apprEff} onChange={(e) => setAppr(Number(e.target.value))} />
+        <hr />
+        <p className="muted small" style={{ margin: 0 }}>Now let the agent try to buy something.</p>
+        <label htmlFor="lx-price">Price <strong>${price}</strong></label>
+        <input id="lx-price" type="range" min={1} max={400} step={1} value={price} onChange={(e) => setPrice(Number(e.target.value))} />
+        <div className="sx-seg" role="group" aria-label="Category of the item">
+          <button aria-pressed={cat === "groceries"} onClick={() => setCat("groceries")}>Groceries</button>
+          <button aria-pressed={cat === "electronics"} onClick={() => setCat("electronics")}>Electronics</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -179,7 +132,7 @@ function Walkthrough() {
     0: (
       <>
         <h3>You give the agent a signed permission slip</h3>
-        <dl className="kv">
+        <dl className="sx-kv">
           <dt>Label</dt><dd>Groceries, $200/month</dd>
           <dt>Allowed</dt><dd>groceries only</dd>
           <dt>Monthly cap</dt><dd>$200.00</dd>
@@ -192,43 +145,43 @@ function Walkthrough() {
       <>
         <h3>You say: “restock the coffee”</h3>
         <p>The agent looks at the shop’s catalog and records every option it saw, then picks one and says why.</p>
-        <p><span className="chip chip-info">Picked</span> <strong>Coffee beans 1kg, $18.00</strong> <span className="muted">· “only coffee beans in the catalog”</span></p>
+        <p><Chip tone="info">Picked</Chip> <strong>Coffee beans 1kg, $18.00</strong> <span className="muted">· “only coffee beans in the catalog”</span></p>
       </>
     ) : (
       <>
         <h3>You say: “buy sku ELE-GAME-01” with the demo switch on</h3>
         <p>Normally the guard would stop this. The sandbox demo switch lets the agent break its slip on purpose, so you can see how the record handles it.</p>
-        <p><span className="chip chip-demo">Demo override</span> <strong>Games console, $299.00</strong> <span className="muted">· electronics</span></p>
+        <p><Chip tone="demo">Demo override</Chip> <strong>Games console, $299.00</strong> <span className="muted">· electronics</span></p>
       </>
     ),
     2: ok ? (
       <>
         <h3>The checker is plain code, not an AI</h3>
-        <ul className="checks">
+        <ul className="lx-checks">
           <li className="yes">Category “groceries” is allowed</li>
           <li className="yes">$18.00 fits the $200.00 monthly cap</li>
           <li className="yes">Under the $75.00 approval line, so no pause for you</li>
         </ul>
-        <p><span className="chip chip-ok">Within mandate</span> The agent may go ahead.</p>
+        <p><Stamp tone="ok">Within mandate</Stamp> The agent may go ahead.</p>
       </>
     ) : (
       <>
         <h3>The checker is plain code, not an AI</h3>
-        <ul className="checks">
+        <ul className="lx-checks">
           <li className="no">Category “electronics” is not on the slip</li>
           <li className="no">$299.00 is more than the $200.00 monthly cap</li>
           <li className="no">Over the $75.00 approval line</li>
         </ul>
-        <p><span className="chip chip-bad">Outside mandate</span> The record says so honestly, even though the demo override let it through.</p>
+        <p><Stamp tone="bad">Outside mandate</Stamp> The record says so honestly, even though the demo override let it through.</p>
       </>
     ),
     3: (
       <>
         <h3>Every decision becomes a linked page</h3>
         <p>Each record holds what the agent saw, what it chose, which mandate version applied and whether it was allowed. Each one carries the fingerprint of the one before it, so changing an old page breaks every page after it.</p>
-        <div className="chain" aria-label="Three linked evidence records">
+        <div className="lx-chain" aria-label="Three linked evidence records">
           {["selected", "order_created", "captured"].map((d, i) => (
-            <div key={d} className={`block b${i}`}>
+            <div key={d} className={`lx-block b${i}`}>
               <strong>{d}</strong>
               <span className="mono">{["a41e…07", "c9d2…5b", "3e80…f1"][i]}</span>
               <span className="muted small">{i === 0 ? "prev: 0000…" : `prev: ${["a41e…07", "c9d2…5b"][i - 1]}`}</span>
@@ -242,40 +195,42 @@ function Walkthrough() {
       <>
         <h3>The buyer disputes the charge</h3>
         <p>The response is assembled from the evidence, and the verdict is computed by code.</p>
-        <p><span className="chip chip-ok">DEFENSIBLE</span> Recommended action: <strong>provide evidence</strong>. The agent stayed inside its signed mandate, and the record proves it.</p>
+        <p><Stamp tone="ok" large>Defensible</Stamp></p>
+        <p>Recommended action: <strong>provide evidence</strong>. The agent stayed inside its signed mandate, and the record proves it.</p>
       </>
     ) : (
       <>
         <h3>The buyer disputes the charge</h3>
         <p>The response is assembled from the evidence, and the verdict is computed by code. A model never gets to talk its way around it.</p>
-        <p><span className="chip chip-bad">MANDATE BREACH</span> Recommended action: <strong>accept the claim</strong>. The agent went outside its mandate, so we say so instead of defending it.</p>
+        <p><Stamp tone="bad" large>Mandate breach</Stamp></p>
+        <p>Recommended action: <strong>accept the claim</strong>. The agent went outside its mandate, so we say so instead of defending it.</p>
       </>
     ),
   };
 
   return (
-    <div className="walk">
-      <div className="seg" role="tablist" aria-label="Choose an example purchase">
-        <button role="tab" aria-selected={ok} className={ok ? "on" : ""} onClick={() => choose("ok")}>Coffee beans · $18</button>
-        <button role="tab" aria-selected={!ok} className={!ok ? "on" : ""} onClick={() => choose("bad")}>Games console · $299</button>
+    <div className="lx-walk">
+      <div className="sx-seg" role="tablist" aria-label="Choose an example purchase">
+        <button role="tab" aria-selected={ok} aria-pressed={ok} onClick={() => choose("ok")}>Coffee beans · $18</button>
+        <button role="tab" aria-selected={!ok} aria-pressed={!ok} onClick={() => choose("bad")}>Games console · $299</button>
       </div>
-      <ol className="steps" aria-label="Steps">
+      <ol className="lx-steps" aria-label="Steps">
         {STEPS.map((s, i) => (
           <li key={s}>
-            <button className={`stepbtn ${i === step ? "on" : ""} ${i < step ? "done" : ""}`} aria-current={i === step ? "step" : undefined} onClick={() => { setStep(i); setPlaying(false); }}>
+            <button className={`lx-stepbtn ${i === step ? "on" : ""} ${i < step ? "done" : ""}`} aria-current={i === step ? "step" : undefined} onClick={() => { setStep(i); setPlaying(false); }}>
               <span className="sn">{i < step ? "✓" : i + 1}</span>
               <span className="sl">{s}</span>
             </button>
           </li>
         ))}
       </ol>
-      <div className={`walk-panel ${ok ? "" : "walk-bad"}`} key={`${kase}-${step}`} aria-live="polite">
+      <div className={`lx-panel ${ok ? "" : "bad"}`} key={`${kase}-${step}`} aria-live="polite">
         {panel[step]}
       </div>
       <div className="row wrap">
-        <button className="btn" disabled={step === 0} onClick={() => { setStep(step - 1); setPlaying(false); }}>Back</button>
-        <button className="btn primary" disabled={step === STEPS.length - 1} onClick={() => { setStep(step + 1); setPlaying(false); }}>Next</button>
-        <button className="btn" onClick={() => { if (step >= STEPS.length - 1) setStep(0); setPlaying((p) => !p); }}>{playing ? "Pause" : "Play it through"}</button>
+        <button className="sx-btn" disabled={step === 0} onClick={() => { setStep(step - 1); setPlaying(false); }}>Back</button>
+        <button className="sx-btn primary" disabled={step === STEPS.length - 1} onClick={() => { setStep(step + 1); setPlaying(false); }}>Next</button>
+        <button className="sx-btn" onClick={() => { if (step >= STEPS.length - 1) setStep(0); setPlaying((p) => !p); }}>{playing ? "Pause" : "Play it through"}</button>
       </div>
     </div>
   );
@@ -283,88 +238,83 @@ function Walkthrough() {
 
 /* ---------------------------------- the page ---------------------------------- */
 
-const PRODUCT: { tab: TabId; title: string; text: string; icon: string }[] = [
-  { tab: "mandates", title: "1. Mandates", text: "Write the rules: how much, which kinds of things, when to ask you first. Edit them and a new signed version appears.", icon: "✎" },
-  { tab: "ledger", title: "2. Purchase ledger", text: "Tell the agent what to buy. Every choice lands here with its mandate check, and large ones wait for your approval.", icon: "☰" },
-  { tab: "evidence", title: "3. Evidence trail", text: "Open any purchase to see what the agent saw, what it chose and why, plus a one-click chain check.", icon: "⛓" },
-  { tab: "disputes", title: "4. Disputes", text: "Simulate a dispute and get a response built from the evidence, with the verdict computed by code.", icon: "⚖" },
+const PRODUCT: { tab: TabId; n: string; title: string; text: string }[] = [
+  { tab: "fence", n: "00", title: "The fence", text: "Your mandate drawn as a space. Every purchase is a dot, and a breach stands out at once." },
+  { tab: "mandates", n: "01", title: "Mandates", text: "Write the rules: how much, which kinds of things, when to ask you first. Edit them and a new signed version appears." },
+  { tab: "ledger", n: "02", title: "Purchase ledger", text: "Tell the agent what to buy. Every choice lands here as a receipt with its mandate check, and large ones wait for your approval." },
+  { tab: "evidence", n: "03", title: "Evidence trail", text: "Open any purchase to see what the agent saw, what it chose and why, plus a one-click chain check." },
+  { tab: "disputes", n: "04", title: "Disputes", text: "Simulate a dispute and get a response built from the evidence, with the verdict computed by code." },
 ];
 
 export default function Landing({ onOpen }: { onOpen: (tab?: TabId) => void }) {
   const { health, api } = useStore();
   return (
-    <div className="landing">
+    <div className="sx lx">
       <a className="skip" href="#story">Skip to the story</a>
-      <header className="lp-top">
-        <div className="lp-wrap lp-top-in">
-          <span className="brand-mark"><span className="bm-dot" aria-hidden="true" />Sentry</span>
-          <nav aria-label="Page sections" className="lp-links">
+      <header className="lx-top">
+        <div className="lx-wrap lx-top-in">
+          <span className="lx-brand"><span className="sx-seal" aria-hidden="true">S</span>Sentry</span>
+          <nav aria-label="Page sections" className="lx-links">
             <a href="#story">The story</a>
             <a href="#how">How it works</a>
             <a href="#product">The product</a>
             <a href="#honest">What’s real</a>
           </nav>
-          <button className="btn primary" onClick={() => onOpen()}>Open the console</button>
+          <button className="sx-btn lx-gold" onClick={() => onOpen()}>Open the console</button>
         </div>
       </header>
 
-      <section className="hero">
-        <div className="lp-wrap hero-in">
-          <div className="hero-copy">
-            <span className="chip chip-demo hero-chip">PayPal SANDBOX · no real money</span>
-            <h1>When an AI agent spends your money, keep the receipt that proves <em>why</em>.</h1>
-            <p className="lede">
-              Sentry gives every agent purchase a signed permission slip and a tamper-evident notebook entry. When a charge is disputed, the answer comes from evidence, not guesswork.
+      <section className="lx-hero">
+        <div className="lx-wrap">
+          <div className="lx-hero-copy">
+            <span className="sx-kicker">Receipts for agentic payments · PayPal SANDBOX · no real money</span>
+            <h1>Give your agent room. <em>Not the keys.</em></h1>
+            <p className="lx-lede">
+              When an AI agent spends your money, Sentry keeps the receipt that proves <em>why</em>: a signed permission slip, a strict checker and a notebook that cannot be quietly changed. When a charge is disputed, the answer comes from evidence, not guesswork.
             </p>
             <div className="row wrap">
-              <button className="btn primary big" onClick={() => onOpen()}>Try the live console</button>
-              <a className="btn big ghost" href="#story">See the story in 60 seconds</a>
+              <button className="sx-btn primary lx-big" onClick={() => onOpen()}>Try the live console</button>
+              <a className="sx-btn lx-big" href="#story">See the story in 60 seconds</a>
             </div>
-            <p className="hero-status small">
+            <p className="hero-status small muted">
               {health && api.kind === "api" ? (
-                <>
-                  <span className="dot ok" aria-hidden="true" /> Live now · {health.paypal_mode} PayPal · {agentLabel(health)}
-                </>
+                <>Live now · {health.paypal_mode} PayPal · {agentLabel(health)}</>
               ) : api.kind === "mock" ? (
-                <>
-                  <span className="dot demo" aria-hidden="true" /> Preview with mock data
-                </>
+                <>Preview with mock data</>
               ) : (
-                <>
-                  <span className="dot" aria-hidden="true" /> Waking the server (the free host sleeps when idle)…
-                </>
+                <>Waking the server (the free host sleeps when idle)…</>
               )}
             </p>
           </div>
-          <HeroFlow />
+          <HeroFence />
         </div>
       </section>
 
-      <section id="story" className="lp-sec">
-        <div className="lp-wrap">
-          <p className="eyebrow">The story</p>
-          <h2 className="lp-h2">A helper robot goes shopping</h2>
-          <p className="lp-sub">Three scenes, no jargon.</p>
-          <div className="trio">
-            <article className="scene">
-              <span className="scene-n">The problem</span>
-              <ProblemArt />
+      <section id="story" className="lx-sec">
+        <div className="lx-wrap">
+          <p className="sx-kicker">The story</p>
+          <h2 className="lx-h2">A helper robot goes shopping</h2>
+          <p className="lx-sub">Three scenes, no jargon.</p>
+          <div className="lx-trio">
+            <article className="lx-scene">
+              <Stamp tone="bad" tilt={-4} pop>Unproven</Stamp>
+              <span className="sx-kicker">The problem</span>
               <h3>Nobody wrote down what the robot was allowed to do</h3>
               <p>
                 You let a helper robot do your shopping. Later the shop says “someone paid for a games console!” Was the robot allowed to? Why did it pick that? Nobody can prove it either way, and the money is stuck in an argument.
               </p>
             </article>
-            <article className="scene">
-              <span className="scene-n">How we help</span>
-              <SlipArt />
+            <article className="lx-scene">
+              <Stamp tone="ok" tilt={3} pop>Signed</Stamp>
+              <span className="sx-kicker">How we help</span>
               <h3>A signed slip, a strict checker, and a notebook that can’t be quietly changed</h3>
               <p>
                 Before it shops, the robot gets a permission slip you sign: how much, and what kinds of things. Each time it picks something, a checker made of plain code says yes or no, and the choice is written in a notebook where every page is stitched to the last.
               </p>
             </article>
-            <article className="scene">
-              <span className="scene-n">The result</span>
-              <ResultArt />
+            <article className="lx-scene">
+              <Stamp tone="info" tilt={-2} pop>Case closed</Stamp>
+              <span className="sx-kicker">The result</span>
               <h3>When there’s a fight, we open the notebook</h3>
               <p>
                 If the robot followed the slip, you show the proof. If it broke the slip, the notebook says so and we recommend giving the money back. The verdict is worked out by code, so it stays honest either way.
@@ -374,57 +324,70 @@ export default function Landing({ onOpen }: { onOpen: (tab?: TabId) => void }) {
         </div>
       </section>
 
-      <section id="how" className="lp-sec lp-alt">
-        <div className="lp-wrap">
-          <p className="eyebrow">How it works</p>
-          <h2 className="lp-h2">Follow one purchase</h2>
-          <p className="lp-sub">Pick an example and step through it. This mirrors what the console records.</p>
+      <section id="how" className="lx-sec lx-alt">
+        <div className="lx-wrap">
+          <p className="sx-kicker">How it works</p>
+          <h2 className="lx-h2">Follow one purchase</h2>
+          <p className="lx-sub">Pick an example and step through it. This mirrors what the console records.</p>
           <Walkthrough />
         </div>
       </section>
 
-      <section id="product" className="lp-sec">
-        <div className="lp-wrap">
-          <p className="eyebrow">What we built</p>
-          <h2 className="lp-h2">A working console, four views</h2>
-          <p className="lp-sub">Real server, real PayPal sandbox orders, live updates. Click a view to jump straight in.</p>
-          <div className="prod">
-            <div className="prod-cards">
+      <section id="product" className="lx-sec">
+        <div className="lx-wrap">
+          <p className="sx-kicker">What we built</p>
+          <h2 className="lx-h2">A working console, five views</h2>
+          <p className="lx-sub">Real server, real PayPal sandbox orders, live updates. Click a view to jump straight in.</p>
+          <div className="lx-prod">
+            <div className="lx-cards">
               {PRODUCT.map((p) => (
-                <button key={p.tab} className="pcard" onClick={() => onOpen(p.tab)}>
-                  <span className="pi" aria-hidden="true">{p.icon}</span>
+                <button key={p.tab} className="lx-card" onClick={() => onOpen(p.tab)}>
+                  <span className="n" aria-hidden="true">{p.n}</span>
                   <strong>{p.title}</strong>
                   <span>{p.text}</span>
                   <span className="go">Open this view →</span>
                 </button>
               ))}
             </div>
-            <div className="mini" aria-label="Example of the purchase ledger">
-              <div className="mini-bar"><span className="chip chip-neutral">Example data</span><strong>Purchase ledger</strong></div>
-              <table>
-                <thead><tr><th>Item</th><th className="num">Amount</th><th>Status</th><th>Mandate check</th></tr></thead>
-                <tbody>
-                  <tr><td>Olive oil 1L</td><td className="num">$9.00</td><td><span className="chip chip-ok">Completed</span></td><td><span className="chip chip-ok">Within mandate</span></td></tr>
-                  <tr><td>Pantry restock box A</td><td className="num">$42.00</td><td><span className="chip chip-info">Awaiting payer</span></td><td><span className="chip chip-ok">Within mandate</span></td></tr>
-                  <tr className="picked-bad"><td>Games console</td><td className="num">$299.00</td><td><span className="chip chip-warn">Disputed</span></td><td><span className="chip chip-bad">Outside mandate</span></td></tr>
-                </tbody>
-              </table>
+            <div className="lx-rcpts" aria-label="Example of the purchase ledger">
+              <p className="sx-kicker" style={{ margin: "0 0 10px" }}>Example data · purchase ledger</p>
+              <article className="sx-rcpt">
+                <div className="row spread"><span className="sx-kicker">Completed</span><Chip tone="ok">Completed</Chip></div>
+                <h3 style={{ margin: "6px 0 0" }}>Olive oil 1L</h3>
+                <div className="amt">USD 9.00</div>
+                <hr />
+                <div className="stampzone"><Stamp tone="ok">Within mandate</Stamp></div>
+              </article>
+              <article className="sx-rcpt">
+                <div className="row spread"><span className="sx-kicker">Awaiting payer</span><Chip tone="info">Awaiting payer</Chip></div>
+                <h3 style={{ margin: "6px 0 0" }}>Pantry restock box A</h3>
+                <div className="amt">USD 42.00</div>
+                <hr />
+                <div className="stampzone"><Stamp tone="ok">Within mandate</Stamp></div>
+              </article>
+              <article className="sx-rcpt breach">
+                <div className="row spread"><span className="sx-kicker">Disputed</span><Chip tone="warn">Disputed</Chip></div>
+                <h3 style={{ margin: "6px 0 0" }}>Games console</h3>
+                <div className="amt">USD 299.00</div>
+                <hr />
+                <div className="stampzone"><Stamp tone="bad">Outside mandate</Stamp></div>
+              </article>
             </div>
           </div>
-          <div className="row wrap cta-row">
-            <button className="btn primary big" onClick={() => onOpen()}>Open the console</button>
-            <button className="btn big ghost" onClick={() => onOpen("ledger")}>Ask the agent to buy something</button>
+          <div className="row wrap" style={{ marginTop: 30 }}>
+            <button className="sx-btn primary lx-big" onClick={() => onOpen()}>Open the console</button>
+            <button className="sx-btn lx-big" onClick={() => onOpen("ledger")}>Ask the agent to buy something</button>
           </div>
         </div>
       </section>
 
-      <section id="honest" className="lp-sec lp-alt">
-        <div className="lp-wrap">
-          <p className="eyebrow">What’s real</p>
-          <h2 className="lp-h2">Honest about the edges</h2>
-          <div className="honest">
-            <div>
-              <h3>Real</h3>
+      <section id="honest" className="lx-sec lx-alt">
+        <div className="lx-wrap">
+          <p className="sx-kicker">What’s real</p>
+          <h2 className="lx-h2">Honest about the edges</h2>
+          <div className="lx-honest">
+            <div className="real">
+              <Stamp tone="ok" tilt={-3}>Real</Stamp>
               <ul>
                 <li>Orders and captures on the PayPal <strong>sandbox</strong>, with signed webhooks</li>
                 <li>ed25519-signed, versioned mandates</li>
@@ -432,8 +395,8 @@ export default function Landing({ onOpen }: { onOpen: (tab?: TabId) => void }) {
                 <li>A checker and dispute verdict written as code</li>
               </ul>
             </div>
-            <div>
-              <h3>Not claimed</h3>
+            <div className="not">
+              <Stamp tone="warn" tilt={2}>Not claimed</Stamp>
               <ul>
                 <li>Disputes in this demo are <strong>simulated</strong></li>
                 <li>No AP2 or FIDO conformance, no card-network integration, no liability shift</li>
@@ -445,12 +408,12 @@ export default function Landing({ onOpen }: { onOpen: (tab?: TabId) => void }) {
         </div>
       </section>
 
-      <footer className="lp-foot">
-        <div className="lp-wrap lp-foot-in">
+      <footer className="lx-foot">
+        <div className="lx-wrap lx-foot-in">
           <span><strong>Sentry</strong> · built for the PayPal AI Hackathon 2026</span>
           <span className="row wrap">
             <a href="https://github.com/BUTTERFINGERS7498/PaypalAi" target="_blank" rel="noopener noreferrer">Source on GitHub</a>
-            <button className="linkbtn" onClick={() => onOpen()}>Open the console</button>
+            <button className="lx-link" onClick={() => onOpen()}>Open the console</button>
           </span>
         </div>
       </footer>

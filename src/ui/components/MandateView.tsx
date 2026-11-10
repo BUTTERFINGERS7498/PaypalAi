@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import { fmtTime, short } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { Mandate, VerifyResult } from "../lib/types";
-import { Chip, Notice, Section, useAction } from "./ui";
+import { Notice, Section, Stamp, useAction } from "./ui";
 
 const parseCats = (s: string) => s.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
 const validMoney = (v: string) => /^\d+(\.\d{1,2})?$/.test(v.trim());
@@ -32,7 +32,7 @@ function LimitsForm(props: {
     props.onSubmit({ monthly_cap: two(cap), categories: c, approval_above: two(appr) });
   }
   return (
-    <form onSubmit={submit} className="form-grid">
+    <form onSubmit={submit} className="sx-form">
       <label htmlFor={`${props.idp}-cap`}>Monthly cap (USD)</label>
       <input id={`${props.idp}-cap`} inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value)} required />
       <label htmlFor={`${props.idp}-cat`}>Allowed categories (comma separated)</label>
@@ -41,8 +41,8 @@ function LimitsForm(props: {
       <input id={`${props.idp}-apr`} inputMode="decimal" value={appr} onChange={(e) => setAppr(e.target.value)} required />
       {err && <Notice kind="error">{err}</Notice>}
       <div className="row">
-        <button className="btn primary" disabled={props.busy}>{props.busy ? "Saving…" : props.submitLabel}</button>
-        {props.onCancel && <button type="button" className="btn" onClick={props.onCancel}>Cancel</button>}
+        <button className="sx-btn primary" disabled={props.busy}>{props.busy ? "Saving…" : props.submitLabel}</button>
+        {props.onCancel && <button type="button" className="sx-btn" onClick={props.onCancel}>Cancel</button>}
       </div>
     </form>
   );
@@ -61,39 +61,40 @@ function MandateCard({ m }: { m: Mandate }) {
   const revoked = m.status === "revoked";
 
   return (
-    <article className={`mandate ${revoked ? "is-revoked" : ""}`} aria-label={`Mandate ${m.label}`}>
-      <header className="card-head">
+    <article className={`sx-doc ${revoked ? "is-revoked" : ""}`} aria-label={`Mandate ${m.label}`}>
+      <span className={`sx-sealmark ${verify?.valid ? "show" : ""}`} aria-hidden="true">SIGNATURE<br />VERIFIED</span>
+      <header className="sx-doc-head">
         <div>
-          <h3>{m.label}</h3>
-          <p className="muted mono">{m.id} · version {m.version}</p>
+          <span className="sx-kicker">Mandate · version {m.version}</span>
+          <h3 className="sx-big" style={{ fontSize: "1.5rem" }}>{m.label}</h3>
+          <p className="muted mono">{m.id}</p>
         </div>
-        <Chip tone={revoked ? "bad" : "ok"}>{revoked ? "Revoked" : "Active"}</Chip>
+        <Stamp tone={revoked ? "bad" : "ok"} large pop>{revoked ? "Revoked" : "Active"}</Stamp>
       </header>
 
-      <dl className="kv">
-        <dt>Monthly cap</dt><dd>USD {m.limits.monthly_cap}</dd>
-        <dt>Categories</dt><dd>{m.limits.categories.join(", ")}</dd>
-        <dt>Approval needed above</dt><dd>USD {m.limits.approval_above}</dd>
-        <dt>Period</dt><dd>{m.budget.period} (UTC)</dd>
-      </dl>
+      <div style={{ margin: "14px 0 6px" }}>
+        <p className="clause"><i>§1</i><span>The agent may spend up to <strong className="sx-big">USD {m.limits.monthly_cap}</strong> each month ({m.budget.period}, UTC).</span></p>
+        <p className="clause"><i>§2</i><span>Only in these categories: <strong>{m.limits.categories.join(", ")}</strong>.</span></p>
+        <p className="clause"><i>§3</i><span>Any single purchase above <strong className="sx-big">USD {m.limits.approval_above}</strong> waits for a human to approve it.</span></p>
+      </div>
 
       <div className="budget" aria-label="Budget">
         <div className="row spread">
           <span>Spent <strong>USD {m.budget.spent}</strong></span>
           <span>Remaining <strong>USD {m.budget.remaining}</strong></span>
         </div>
-        <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${pct}% of monthly cap spent`}>
-          <div className="bar-fill" style={{ width: `${pct}%` }} />
+        <div className={`sx-gauge ${pct >= 85 ? "hot" : ""}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${pct}% of monthly cap spent`}>
+          <div style={{ width: `${pct}%` }} />
         </div>
       </div>
 
-      <p className="muted small">
+      <p className="muted small" style={{ marginTop: 12 }}>
         Signed with the {m.signature.note} ({m.signature.alg}, {m.signature.key_id}). Payload hash{" "}
         <span className="mono">{short(m.signature.payload_hash, 12)}</span>. This is our own demo key; it is not an AP2/FIDO credential.
       </p>
 
       {editing ? (
-        <div className="subcard">
+        <div className="sx-sub">
           <h4>Edit limits (saves a new signed version {m.version + 1})</h4>
           <LimitsForm
             idp={`edit-${m.id}`}
@@ -108,20 +109,20 @@ function MandateCard({ m }: { m: Mandate }) {
           />
         </div>
       ) : (
-        <div className="row wrap">
-          <button className="btn" disabled={act.busy || revoked} onClick={() => setEditing(true)}>Edit limits</button>
-          <button className="btn" disabled={act.busy} onClick={async () => { const r = await act.run(() => api.verifyMandate(m.id)); if (r) setVerify(r); }}>
+        <div className="row wrap" style={{ marginTop: 10 }}>
+          <button className="sx-btn" disabled={act.busy || revoked} onClick={() => setEditing(true)}>Edit limits</button>
+          <button className="sx-btn" disabled={act.busy} onClick={async () => { const r = await act.run(() => api.verifyMandate(m.id)); if (r) setVerify(r); }}>
             Verify signature
           </button>
-          <button className="btn" disabled={act.busy} onClick={async () => { const r = await act.run(() => api.mandateVersions(m.id)); if (r) setVersions(r); }}>
+          <button className="sx-btn" disabled={act.busy} onClick={async () => { const r = await act.run(() => api.mandateVersions(m.id)); if (r) setVersions(r); }}>
             Version history
           </button>
-          {!revoked && !confirmRevoke && <button className="btn danger" onClick={() => setConfirmRevoke(true)}>Revoke…</button>}
+          {!revoked && !confirmRevoke && <button className="sx-btn danger" onClick={() => setConfirmRevoke(true)}>Revoke…</button>}
           {!revoked && confirmRevoke && (
             <span className="row" role="group" aria-label="Confirm revoke">
               <span>Revoke permanently? The agent will be unable to use it.</span>
-              <button className="btn danger" disabled={act.busy} onClick={async () => { await act.run(() => api.revokeMandate(m.id)); setConfirmRevoke(false); }}>Yes, revoke</button>
-              <button className="btn" onClick={() => setConfirmRevoke(false)}>No</button>
+              <button className="sx-btn danger" disabled={act.busy} onClick={async () => { await act.run(() => api.revokeMandate(m.id)); setConfirmRevoke(false); }}>Yes, revoke</button>
+              <button className="sx-btn" onClick={() => setConfirmRevoke(false)}>No</button>
             </span>
           )}
         </div>
@@ -136,7 +137,7 @@ function MandateCard({ m }: { m: Mandate }) {
         </Notice>
       )}
       {versions && (
-        <div className="subcard">
+        <div className="sx-sub">
           <h4>Versions (immutable)</h4>
           <ul className="plain">
             {versions.map((v) => (
@@ -161,15 +162,15 @@ export default function MandateView() {
       <Section
         id="mandates-h"
         title="Mandates"
-        actions={<button className="btn primary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? "Close" : "New mandate"}</button>}
+        actions={<button className="sx-btn primary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? "Close" : "New mandate"}</button>}
       >
         <p className="muted">
           A mandate is the signed set of limits your shopping agent must stay inside. Changing limits creates a new signed version; old versions are kept.
         </p>
         {open && (
-          <div className="subcard">
+          <div className="sx-sub">
             <h3>Create mandate</h3>
-            <div className="form-grid">
+            <div className="sx-form">
               <label htmlFor="new-label">Label</label>
               <input id="new-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Groceries, $200/month" />
             </div>

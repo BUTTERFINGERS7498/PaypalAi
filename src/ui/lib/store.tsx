@@ -6,7 +6,7 @@ import { setApprovalToken } from "./http";
 import { ApiError } from "./types";
 import type { Api, Approval, Dispute, EvidenceRecord, Health, Mandate, Purchase } from "./types";
 
-export type TabId = "mandates" | "ledger" | "evidence" | "disputes";
+export type TabId = "fence" | "mandates" | "ledger" | "evidence" | "disputes";
 
 interface Store {
   api: Api;
@@ -65,7 +65,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [lastEvidence, setLastEvidence] = useState<EvidenceRecord | null>(null);
   const [token, setTokenState] = useState("");
   const [operator, setOperator] = useState("console-user");
-  const [tab, setTab] = useState<TabId>("mandates");
+  const [tab, setTab] = useState<TabId>("fence");
   const [focusPurchase, setFocus] = useState<string | null>(null);
   const alive = useRef(true);
 

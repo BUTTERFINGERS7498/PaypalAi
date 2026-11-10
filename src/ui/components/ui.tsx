@@ -1,18 +1,29 @@
 "use client";
 import { useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { STATUS_LABEL, breachLabel } from "../lib/format";
 import { errMsg } from "../lib/store";
 
-export function Chip({ tone, children, title }: { tone: "ok" | "warn" | "bad" | "info" | "neutral" | "demo"; children: ReactNode; title?: string }) {
+type Tone = "ok" | "warn" | "bad" | "info" | "neutral" | "demo";
+
+export function Chip({ tone, children, title }: { tone: Tone; children: ReactNode; title?: string }) {
   return (
-    <span className={`chip chip-${tone}`} title={title}>
+    <span className={`sx-chip t-${tone}`} title={title}>
       {children}
     </span>
   );
 }
 
-const STATUS_TONE: Record<string, "ok" | "warn" | "bad" | "info" | "neutral"> = {
+/** An ink stamp, like a notary mark. `pop` plays the press animation once on mount. */
+export function Stamp({ tone, children, tilt = -3, title, large, pop }: { tone: Tone; children: ReactNode; tilt?: number; title?: string; large?: boolean; pop?: boolean }) {
+  return (
+    <span className={`sx-stamp t-${tone} ${large ? "lg" : ""} ${pop ? "pop" : ""}`} style={{ "--tilt": `${tilt}deg` } as CSSProperties} title={title}>
+      {children}
+    </span>
+  );
+}
+
+const STATUS_TONE: Record<string, Tone> = {
   completed: "ok",
   awaiting_payer: "info",
   pending_approval: "warn",
@@ -25,27 +36,28 @@ export const StatusChip = ({ status }: { status: string }) => (
   <Chip tone={STATUS_TONE[status] ?? "neutral"}>{STATUS_LABEL[status] ?? status}</Chip>
 );
 
-export function Flags({ within, breaches, rogue }: { within: boolean; breaches: string[]; rogue: boolean }) {
+export function Flags({ within, breaches, rogue, stamp }: { within: boolean; breaches: string[]; rogue: boolean; stamp?: boolean }) {
+  const Mark = stamp ? Stamp : Chip;
   return (
-    <span className="flags">
+    <span className="sx-flags">
       {!within && (
-        <Chip tone="bad" title="The mandate checker found this choice outside the signed mandate">
+        <Mark tone="bad" title="The mandate checker found this choice outside the signed mandate">
           Outside mandate{breaches.length ? `: ${breaches.map(breachLabel).join(", ")}` : ""}
-        </Chip>
+        </Mark>
       )}
       {rogue && (
-        <Chip tone="demo" title="Demo switch: the guard was told to let the agent break its mandate">
+        <Mark tone="demo" title="Demo switch: the guard was told to let the agent break its mandate">
           Demo: agent overrides its mandate
-        </Chip>
+        </Mark>
       )}
-      {within && !rogue && <Chip tone="ok">Within mandate</Chip>}
+      {within && !rogue && <Mark tone="ok">Within mandate</Mark>}
     </span>
   );
 }
 
 export function Notice({ kind, children }: { kind: "error" | "info" | "ok" | "warn"; children: ReactNode }) {
   return (
-    <div className={`notice notice-${kind}`} role={kind === "error" ? "alert" : "status"}>
+    <div className={`sx-notice n-${kind}`} role={kind === "error" ? "alert" : "status"}>
       {children}
     </div>
   );
@@ -72,8 +84,8 @@ export function useAction() {
 
 export function Section({ title, children, actions, id }: { title: string; children: ReactNode; actions?: ReactNode; id?: string }) {
   return (
-    <section className="card" aria-labelledby={id}>
-      <div className="card-head">
+    <section className="sx-panel" aria-labelledby={id}>
+      <div className="sx-panel-head">
         <h2 id={id}>{title}</h2>
         {actions}
       </div>
