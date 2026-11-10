@@ -31,6 +31,7 @@ const STATUS_TONE: Record<string, Tone> = {
   failed: "bad",
   disputed: "warn",
   dispute_resolved: "neutral",
+  refunded: "info",
 };
 export const StatusChip = ({ status }: { status: string }) => (
   <Chip tone={STATUS_TONE[status] ?? "neutral"}>{STATUS_LABEL[status] ?? status}</Chip>

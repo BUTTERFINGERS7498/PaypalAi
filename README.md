@@ -173,6 +173,8 @@ We want you to know exactly what has been run against PayPal.
 | Live **Claude** tool-calling agent choosing the item | ✅ **Run for real**, including a refusal of an out-of-mandate request without the demo flag |
 | Out-of-mandate purchase recorded as a breach (demo mode) | ✅ **Run for real**: captured at PayPal with `within_mandate: false` |
 | Dispute verdicts (`DEFENSIBLE` / `MANDATE_BREACH`) and narratives | ⚠️ **Simulated disputes only.** The verdict logic and Claude-written narratives were run on local `simulated` disputes |
+| **Refund on breach**: accepting the claim on a `MANDATE_BREACH` refunds the capture through `POST /v2/payments/captures/{id}/refund` | ✅ **Run for real** on the PayPal sandbox through our own server (2026-11-11): a rogue $299.00 purchase was captured, disputed (simulated), assembled as `MANDATE_BREACH`, and accepting the claim returned refund `22W7201820913982S` `COMPLETED`; PayPal then reported the capture as `REFUNDED`, and the mandate's spend went back down. Partial refunds, idempotent retries and the over-refund guard (`CAPTURE_FULLY_REFUNDED`) were also checked by hand |
+| **Card checkout** (`CHECKOUT_MODE=card`): pays with PayPal's published sandbox test card, no buyer login | ✅ **Run for real** on the sandbox: the order comes back `COMPLETED` with its capture. Sandbox only; the client cannot reach live PayPal |
 | PayPal Disputes API: **list** | ✅ Works with the sandbox app (returned no disputes) |
 | PayPal Disputes API: **create / provide-evidence / accept-claim** | ❌ **Not exercised.** PayPal answered `TRANSACTION_NOT_ELIGIBLE` when we tried to open a dispute on our sandbox payments, and the buyer could not open one in the sandbox UI either |
 | Mock mode (`PAYPAL_MODE=mock`, `AGENT_MODE=mock`) | 🧪 In-process fakes, no network. Used by the automated tests and the no-credentials path |
@@ -353,6 +355,16 @@ The engine only **proposes**. The mandate checker and the gate decide exactly as
 
 All of it is in the evidence record, so it is covered by the hash chain like everything else.
 
+#### Refund on breach
+
+When a dispute's verdict is **MANDATE BREACH**, the button in the case file is **Accept claim and refund**. Sentry refunds the capture through the PayPal refund API, with a ticket minted by the gate for that dispute and the person's name, then:
+
+- the purchase becomes `refunded`, and the month's budget goes back up by the refunded amount;
+- a `refunded` evidence record holds the PayPal refund id, so the refund is part of the hash chain;
+- the case file shows a **REFUNDED** stamp with the refund id.
+
+A **DEFENSIBLE** verdict never refunds. A refund is idempotent (`PayPal-Request-Id: mandate-refund-<dispute id>`), so a retry cannot pay twice. If PayPal refuses, a `refund_failed` record is written and the dispute stays open so it can be retried. On a **real** PayPal dispute, PayPal's own accept-claim refunds the buyer, so Sentry does not refund again: it records the refund when the `PAYMENT.CAPTURE.REFUNDED` webhook arrives.
+
 #### Measured, not guessed
 
 `npm run bench:engine -- <model>` runs three request sets: the original 18 requests (used to tune the concept map), 15 **held-out** requests written afterwards, and 6 things the catalog does not sell. Results on this catalog:
@@ -415,7 +427,7 @@ For a local 9router gateway (default address `http://localhost:20128`) use its k
 | `PAYPAL_BUYER_EMAIL` | | Sandbox buyer email, for reference |
 | `PAYPAL_WEBHOOK_ID` | | Required when `WEBHOOK_VERIFY=paypal` |
 | `WEBHOOK_VERIFY` | `paypal` | `paypal` = verify signatures · `off` = accept unverified (recorded as `verified:false`) |
-| `CHECKOUT_MODE` | `payer_approval` | `payer_approval` (buyer approves at PayPal, the verified path) or `card` (capture right after creating the order; meant for mock PayPal, since the sandbox client sends no card details) |
+| `CHECKOUT_MODE` | `payer_approval` | `payer_approval` (buyer approves at PayPal) or `card` (pays with PayPal's published sandbox test Visa, so the order is captured at once with no buyer login; good for a hosted demo that judges can try end to end, including the refund) |
 | `AGENT_MODE` | `live` | `live` = Claude tool-calling (needs `ANTHROPIC_API_KEY`) · `mock` = deterministic keyword parser · `engine` = on-server semantic engine, no key and no external AI service |
 | `ENGINE_MODEL` / `ENGINE_MODEL_DIR` | `Xenova/all-MiniLM-L6-v2` / `./models` | Embedding model for `engine` mode and where it is cached (`npm run build:engine` downloads it) |
 | `ENGINE_OFFLINE` | | `1` = never download the model; it must already be in `ENGINE_MODEL_DIR` |

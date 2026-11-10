@@ -487,6 +487,11 @@ class MockBackend implements Api {
     await sleep(400);
     d.packet.submitted_at = now();
     d.packet.paypal_response = { simulated: true };
+    if (d.packet.verdict === "MANDATE_BREACH") {
+      d.packet.refund = { paypal_refund_id: nid("REFUND-MOCK"), status: "COMPLETED", amount: d.amount, source: "refund_api", refunded_at: now() };
+      const p = this.purchases.find((x) => x.id === d.purchase_id);
+      if (p) { p.status = "refunded"; p.updated_at = now(); this.emit({ type: "purchase.updated", data: { ...p } }); }
+    }
     d.status = "submitted";
     d.updated_at = now();
     this.emit({ type: "dispute.updated", data: { ...d } });

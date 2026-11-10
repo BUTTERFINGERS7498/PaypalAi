@@ -6,6 +6,9 @@ Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-r
 ## Breaking changes
 _Newest first. Every breaking change gets a dated line here._
 
+- 2026-11-11 (additive, not breaking) — refund on breach: purchase status `refunded`; evidence decisions `refunded`,
+  `refund_failed`; `DisputePacket.refund`; webhook `PAYMENT.CAPTURE.REFUNDED`; `CHECKOUT_MODE=card` now pays with
+  PayPal's published sandbox test card (the order is created already captured).
 - 2026-11-11 (additive, not breaking) — engine upgrades: optional mandate clause `limits.ask_when_unsure`
   (stored only when `true`, so existing signatures are unchanged) and approval reason `low_match_confidence`;
   evidence `decision` gains `clarify`; agent replies may carry `choices`; evidence `data.agent` holds the engine
@@ -87,7 +90,7 @@ deterministic. In-memory and per process (they reset on restart).
 | `PAYPAL_BUYER_EMAIL` | no | — | sandbox **personal** (buyer) account email, shown in the console |
 | `PAYPAL_WEBHOOK_ID` | if `WEBHOOK_VERIFY=paypal` | — | |
 | `WEBHOOK_VERIFY` | no | `paypal` | `paypal` verify signature; `off` accept unverified (stored `verified:false`) |
-| `CHECKOUT_MODE` | no | `payer_approval` | `payer_approval` order waits for the buyer to approve at PayPal (`awaiting_payer`); `card` headless capture with a sandbox test card if the account supports it (see §12) |
+| `CHECKOUT_MODE` | no | `payer_approval` | `payer_approval` order waits for the buyer to approve at PayPal (`awaiting_payer`); `card` pays with PayPal's published sandbox test Visa: the create call returns the capture, so the purchase completes at once (verified on the sandbox 2026-11-11) |
 | `ANTHROPIC_API_KEY` | if `AGENT_MODE=live` | — | |
 | `ANTHROPIC_BASE_URL` | no | — | gateway such as 9router `http://localhost:20128` (a trailing `/v1` is stripped); then the key is the gateway's |
 | `ANTHROPIC_MODEL` | no | `claude-sonnet-5-5` | behind a gateway use its id (9router: `cc/claude-sonnet-5-5`) |
@@ -138,7 +141,7 @@ deterministic. In-memory and per process (they reset on restart).
   `payload_hash` = sha-256 of that string; `sig` = ed25519 over the same bytes.
 - `status`: `active` | `revoked`. A revoked mandate cannot be used by the agent (`mandate_inactive`).
 - `budget` is derived (never stored): `spent` = sum of purchases for this mandate in the current
-  month with status `awaiting_payer`, `completed`, `disputed`, `dispute_resolved`.
+  month with status `awaiting_payer`, `completed`, `disputed`, `dispute_resolved` (not `refunded`).
 
 ### CatalogItem (seeded, read-only)
 ```json
@@ -172,6 +175,7 @@ pending_approval ──approve──▶ (order created) ──▶ awaiting_payer
         │                          │ (CHECKOUT_MODE=card skips awaiting_payer)
         └──reject──▶ rejected      └──PayPal error──▶ failed
 completed ──dispute opened──▶ disputed ──dispute closed──▶ dispute_resolved
+                                  └──breach claim accepted + refunded──▶ refunded
 ```
 Within-mandate purchases at or under `approval_above` skip `pending_approval`.
 
@@ -269,7 +273,8 @@ the UI and README and is never described as coming from PayPal.
   "chain_valid": true,
   "assembled_at": "…",
   "submitted_at": null,
-  "paypal_response": null
+  "paypal_response": null,
+  "refund": null
 }
 ```
 - `verdict` is computed by code: `MANDATE_BREACH` if any record for the purchase has
@@ -373,6 +378,13 @@ created; `purchase.status: failed`, reason in the evidence `order_failed` record
   → Disputes API `provide-evidence`; `MANDATE_BREACH` → `accept-claim` with the honest note. For a
   `simulated` dispute no PayPal call is made and `packet.paypal_response` is `{ "simulated": true }`.
   `409` if no packet or already submitted.
+  **Refund on breach:** for a `simulated` dispute with `MANDATE_BREACH`, submit also refunds the capture in full
+  (`POST /v2/payments/captures/{id}/refund`, ticket minted by the gate for the dispute, `PayPal-Request-Id:
+  mandate-refund-<dispute id>`). On success `packet.refund = { paypal_refund_id, status, amount, source: "refund_api",
+  refunded_at }`, the purchase becomes `refunded` (no longer counted in the month's spend) and evidence gets a
+  `refunded` record. If PayPal refuses: `502 upstream_error`, a `refund_failed` record, and the dispute stays
+  `evidence_assembled` so it can be retried. A real PayPal dispute is not refunded by Sentry (PayPal refunds on
+  accept-claim); see `PAYMENT.CAPTURE.REFUNDED`.
 
 ### Webhook records
 `GET /api/webhooks?limit=50` → `{ "events": [WebhookEvent] }` (newest first)
@@ -398,6 +410,7 @@ Envelope: `{ "id": "WH-…", "event_type": "…", "resource_type": "…", "creat
 | `CHECKOUT.ORDER.APPROVED` | `resource.id` (order id) | purchase `awaiting_payer` → capture executes through the gate → `completed`; evidence `captured` |
 | `PAYMENT.CAPTURE.COMPLETED` | `resource.id` (capture id), `resource.supplementary_data.related_ids.order_id` | purchase → `completed` if not already; `paypal_capture_id` set |
 | `PAYMENT.CAPTURE.DENIED` | same | purchase → `failed` |
+| `PAYMENT.CAPTURE.REFUNDED` | `resource.id` (refund id), `resource.status`, `resource.links[rel=up]` (the capture) | purchase → `refunded` if not already; evidence `refunded` with `data.source: "accept_claim"` (recorded once) |
 | `CUSTOMER.DISPUTE.CREATED` | `resource.dispute_id`, `resource.disputed_transactions[0].seller_transaction_id` / order id, `resource.reason`, `resource.dispute_amount` | create/link a Dispute (`open`); purchase → `disputed` |
 | `CUSTOMER.DISPUTE.UPDATED` | `resource.dispute_id`, `resource.status` | update the Dispute |
 | `CUSTOMER.DISPUTE.RESOLVED` | `resource.dispute_id` | Dispute → `resolved`; purchase → `dispute_resolved` |
@@ -405,7 +418,7 @@ Envelope: `{ "id": "WH-…", "event_type": "…", "resource_type": "…", "creat
 
 Unknown order/dispute ids are stored with `processed:false, error:"unknown_purchase"`, `200`.
 Every processed event appends no audit record of its own: the **evidence chain** is the audit log.
-(`captured` is the only webhook-driven evidence record.) **Test harness note (qa):** run the server
+(`captured` and `refunded` are the only webhook-driven evidence records.) **Test harness note (qa):** run the server
 with `WEBHOOK_VERIFY=off PAYPAL_MODE=mock AGENT_MODE=mock` and POST envelopes with the order id from
 `purchase.paypal_order_id`. In `PAYPAL_MODE=mock` a purchase waits in `awaiting_payer` unless
 `CHECKOUT_MODE=card`; the mock PayPal accepts `CHECKOUT.ORDER.APPROVED` for any order it created.

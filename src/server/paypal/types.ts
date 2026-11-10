@@ -5,10 +5,18 @@ export interface CreatedOrder {
   paypal_order_id: string;
   approve_url: string | null;
   status: string;
+  /** Card checkout only: PayPal captured the payment as part of creating the order. */
+  capture_id?: string | null;
 }
 
 export interface CapturedOrder {
   paypal_capture_id: string;
+}
+
+export interface RefundResult {
+  paypal_refund_id: string;
+  /** PayPal refund status: COMPLETED, PENDING, ... */
+  status: string;
 }
 
 /** The slice of a PayPal dispute the app needs. */
@@ -49,5 +57,7 @@ export interface PaypalClient {
   listDisputes(): Promise<PaypalDispute[]>;
   provideEvidence(ticket: ApprovalTicket, disputeId: string, evidence: { notes: string }): Promise<Record<string, unknown>>;
   acceptClaim(ticket: ApprovalTicket, disputeId: string, accept: { note: string }): Promise<Record<string, unknown>>;
+  /** Refund a capture (full amount). `requestId` makes it idempotent: a retry returns the same refund. */
+  refundCapture(ticket: ApprovalTicket, captureId: string, r: { amount: { currency_code: string; value: string }; note: string; requestId: string }): Promise<RefundResult>;
   verifyWebhook(headers: WebhookHeaders, event: unknown): Promise<boolean>;
 }

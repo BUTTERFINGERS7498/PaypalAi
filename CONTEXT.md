@@ -19,6 +19,18 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **B1 Refund on breach (2026-11-11, uncommitted):** `PaypalClient.refundCapture` (sandbox `POST /v2/payments/captures/{id}/refund`,
+  `PayPal-Request-Id: mandate-refund-<dispute id>`; mock is idempotent and refuses a second refund), `Gate.refundForBreach`
+  (simulated dispute + MANDATE_BREACH only; ticket for the dispute) and `Gate.onCaptureRefunded` (webhook
+  `PAYMENT.CAPTURE.REFUNDED`, records once), `DisputeService.submit` refunds before marking submitted (failure -> 502,
+  `refund_failed` evidence, dispute stays open). New: purchase status `refunded` (not in SPENDING, so budget restored),
+  evidence `refunded`/`refund_failed`, `packet.refund`. `CHECKOUT_MODE=card` now pays with PayPal's sandbox test Visa
+  (create returns the capture; `Gate.recordCaptured`). UI: "Accept claim and refund" + REFUNDED stamp (DisputeView).
+  **Verified on the real sandbox through our server:** rogue $299 captured (order 846001219B581553Y, capture
+  27488487L3085294P), dispute -> MANDATE_BREACH -> refund 22W7201820913982S COMPLETED, PayPal capture status REFUNDED,
+  spend 326.50 -> 27.50, chain valid. Tests: `tests/refund.test.ts` (6); `npm test` 53 pass. Security review flag fixed:
+  `/api/mandates/draft` now rate limited (60/h per client, 1000/day). Render still runs `CHECKOUT_MODE=payer_approval`
+  (decision for the human: set `card` so judges can reach the refund).
 - **Group C engine upgrades (2026-11-11, uncommitted):** `src/server/engine.ts` decide() now has: concept map
   (`EXPANSIONS`, concept words also scored alone at 0.9), trace in evidence `data.agent` (scores, confidence,
   expansions, substitution, preference, injection), clarify question (`CONFIDENT 0.50`, `CLARIFY_GAP 0.05`,

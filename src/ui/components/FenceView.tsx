@@ -25,7 +25,7 @@ const dist = (amt: number, cap: number) => R * (0.38 + 0.62 * Math.sqrt(Math.min
 const pol = (r: number, a: number) => ({ x: C + r * Math.cos(a), y: C + r * Math.sin(a) });
 const tone = (p: Purchase): "ok" | "warn" | "bad" | "neutral" => {
   if (!p.within_mandate) return "bad";
-  if (p.status === "rejected" || p.status === "failed" || p.status === "dispute_resolved") return "neutral";
+  if (p.status === "rejected" || p.status === "failed" || p.status === "dispute_resolved" || p.status === "refunded") return "neutral";
   if (p.status === "pending_approval" || p.status === "awaiting_payer") return "warn";
   return "ok";
 };

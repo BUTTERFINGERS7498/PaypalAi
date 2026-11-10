@@ -6,8 +6,18 @@ import { PAYPAL_SANDBOX_BASE } from '../config.ts';
 import type { Purchase } from '../types.ts';
 import { assertTicket, type ApprovalTicket } from './ticket.ts';
 import {
-  PaypalError, type CapturedOrder, type CreatedOrder, type PaypalClient, type PaypalDispute, type WebhookHeaders,
+  PaypalError, type CapturedOrder, type CreatedOrder, type PaypalClient, type PaypalDispute, type RefundResult, type WebhookHeaders,
 } from './types.ts';
+
+/**
+ * CHECKOUT_MODE=card pays with PayPal's PUBLISHED sandbox test Visa, so a purchase completes without a buyer login
+ * (useful for a hosted demo that judges can try end to end). It only works against the sandbox, which is the only
+ * base URL this client can use. Checked 2026-11-11: create returns COMPLETED with the capture included.
+ */
+const SANDBOX_TEST_CARD = {
+  number: '4111111111111111', expiry: '2030-12', security_code: '123', name: 'Sentry Sandbox Tester',
+  billing_address: { address_line_1: '1 Main St', admin_area_2: 'San Jose', admin_area_1: 'CA', postal_code: '95131', country_code: 'US' },
+};
 
 interface Opts {
   clientId: string;
@@ -77,7 +87,9 @@ export class SandboxPaypalClient implements PaypalClient {
         amount: { currency_code: p.amount.currency_code, value: p.amount.value },
       }],
     };
-    if (this.opts.checkoutMode === 'payer_approval') {
+    if (this.opts.checkoutMode === 'card') {
+      body.payment_source = { card: SANDBOX_TEST_CARD };
+    } else if (this.opts.checkoutMode === 'payer_approval') {
       body.payment_source = {
         paypal: {
           experience_context: {
@@ -93,7 +105,8 @@ export class SandboxPaypalClient implements PaypalClient {
     const res = await this.call('POST', '/v2/checkout/orders', body, { 'paypal-request-id': `mandate-order-${p.id}`, prefer: 'return=representation' });
     if (!res.id) throw new PaypalError('PayPal create order returned no id', 502, null);
     const link = Array.isArray(res.links) ? res.links.find((l: any) => l.rel === 'payer-action' || l.rel === 'approve') : null;
-    return { paypal_order_id: res.id, approve_url: link?.href ?? null, status: res.status ?? 'CREATED' };
+    const capture = res.purchase_units?.[0]?.payments?.captures?.[0];
+    return { paypal_order_id: res.id, approve_url: link?.href ?? null, status: res.status ?? 'CREATED', capture_id: capture?.status === 'COMPLETED' ? String(capture.id) : null };
   }
 
   async captureOrder(ticket: ApprovalTicket, orderId: string): Promise<CapturedOrder> {
@@ -127,6 +140,17 @@ export class SandboxPaypalClient implements PaypalClient {
     const form = new FormData();
     form.append('input', new Blob([JSON.stringify({ evidences: [{ evidence_type: 'OTHER', notes: evidence.notes.slice(0, 2000) }] })], { type: 'application/json' }), 'input.json');
     return this.call('POST', `/v1/customer/disputes/${encodeURIComponent(disputeId)}/provide-evidence`, undefined, {}, form);
+  }
+
+  async refundCapture(ticket: ApprovalTicket, captureId: string, r: { amount: { currency_code: string; value: string }; note: string; requestId: string }): Promise<RefundResult> {
+    assertTicket(ticket);
+    // Checked against the sandbox on 2026-11-11: full and partial refunds return 201 COMPLETED, a repeated
+    // PayPal-Request-Id returns the same refund, and an over-refund is rejected with CAPTURE_FULLY_REFUNDED.
+    const res = await this.call('POST', `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`,
+      { amount: r.amount, note_to_payer: r.note.slice(0, 255) },
+      { 'paypal-request-id': `mandate-refund-${r.requestId}`, prefer: 'return=representation' });
+    if (!res.id) throw new PaypalError('PayPal refund returned no id', 502, null);
+    return { paypal_refund_id: String(res.id), status: String(res.status ?? 'UNKNOWN') };
   }
 
   async acceptClaim(ticket: ApprovalTicket, disputeId: string, accept: { note: string }): Promise<Record<string, unknown>> {

@@ -33,6 +33,11 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
     perClientLimit: cfg.agentRateLimitPerHour, perClientWindowMs: 3600_000,
     globalLimit: cfg.agentDailyLimit, globalWindowMs: 24 * 3600_000,
   });
+  // Mandate drafts sign nothing, so they stay open, but each one can run the embedding model: rate limit them.
+  const draftLimiter = new RateLimiter({
+    perClientLimit: cfg.agentRateLimitPerHour > 0 ? 60 : 0, perClientWindowMs: 3600_000,
+    globalLimit: cfg.agentRateLimitPerHour > 0 ? 1000 : 0, globalWindowMs: 24 * 3600_000,
+  });
   const reconcileLimiter = new RateLimiter({
     perClientLimit: cfg.agentRateLimitPerHour > 0 ? 120 : 0, perClientWindowMs: 3600_000, globalLimit: 0, globalWindowMs: 0,
   });
@@ -139,6 +144,7 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
     }
     // A DRAFT only: reads limits from plain English. Nothing is created or signed; the person reviews and signs.
     if (method === 'POST' && path === '/api/mandates/draft') {
+      enforceLimit(draftLimiter, req, 'draft');
       const b = await readJson(req);
       const text = typeof b.text === 'string' ? b.text.trim() : '';
       if (!text) throw badRequest('text is required');

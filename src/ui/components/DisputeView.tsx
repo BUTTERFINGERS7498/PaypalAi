@@ -6,7 +6,7 @@ import type { Dispute } from "../lib/types";
 import { Chip, Notice, Section, Stamp, useAction } from "./ui";
 
 function DisputeCard({ d }: { d: Dispute }) {
-  const { api, operator, go } = useStore();
+  const { api, operator, go, health } = useStore();
   const act = useAction();
   const pk = d.packet;
   const submitted = d.status === "submitted" || d.status === "resolved";
@@ -36,8 +36,8 @@ function DisputeCard({ d }: { d: Dispute }) {
         <button className="sx-btn primary" disabled={act.busy || submitted} onClick={() => act.run(() => api.assembleDispute(d.id))}>
           {act.busy ? "Working…" : pk ? "Re-assemble evidence" : "Assemble evidence"}
         </button>
-        <button className="sx-btn" disabled={act.busy || !pk || submitted} onClick={() => act.run(() => api.submitDispute(d.id, { decided_by: operator }))}>
-          Submit response
+        <button className={`sx-btn ${breach && !submitted ? "danger" : ""}`} disabled={act.busy || !pk || submitted} onClick={() => act.run(() => api.submitDispute(d.id, { decided_by: operator }))}>
+          {breach ? (d.simulated ? "Accept claim and refund" : "Accept claim (PayPal refunds)") : "Submit response"}
         </button>
         {d.purchase_id && <button className="sx-btn" onClick={() => go("evidence", d.purchase_id!)}>View evidence trail</button>}
       </div>
@@ -58,6 +58,20 @@ function DisputeCard({ d }: { d: Dispute }) {
               <Chip tone={pk.chain_valid ? "ok" : "bad"}>{pk.chain_valid ? "✔ Evidence chain valid" : "✖ Evidence chain INVALID"}</Chip>
             </div>
           </div>
+          {pk.refund && (
+            <div className="sx-verdict ok" style={{ textAlign: "left" }} role="status">
+              <div className="row wrap" style={{ gap: 14 }}>
+                <Stamp tone="info" large pop tilt={-3}>Refunded</Stamp>
+                <div>
+                  <strong>{fmtMoney(pk.refund.amount)} returned to the buyer {health?.paypal_mode === "sandbox" ? "at the PayPal sandbox" : "(mock PayPal: no real call)"}</strong>
+                  <div className="small muted">
+                    refund <span className="mono">{pk.refund.paypal_refund_id}</span> · {pk.refund.status} · {fmtTime(pk.refund.refunded_at)} ·{" "}
+                    {pk.refund.source === "refund_api" ? "issued by Sentry through the PayPal refund API" : "issued by PayPal when the claim was accepted"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <p><span className="lbl">Summary</span> {pk.summary}</p>
           <h4>Narrative</h4>
           <p className="sx-letter">{pk.narrative}</p>

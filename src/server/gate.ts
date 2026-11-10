@@ -11,7 +11,7 @@ import type { PaypalClient } from './paypal/types.ts';
 import { PaypalError } from './paypal/types.ts';
 import { mintTicket } from './paypal/ticket.ts';
 import type { Store } from './store.ts';
-import type { Approval, CatalogItem, Dispute, DisputePacket, EvidenceOption, EvidenceRecord, Mandate, Purchase } from './types.ts';
+import type { Approval, CatalogItem, Dispute, DisputePacket, DisputeRefund, EvidenceOption, EvidenceRecord, Mandate, Purchase } from './types.ts';
 import { centsToMoney, formatMoney, invalidState, mandateInactive, notFound, nowIso, toCents } from './util.ts';
 
 export interface SelectionRequest {
@@ -206,7 +206,10 @@ export class Gate {
         within_mandate: updated.within_mandate, breaches: updated.breaches, demo_rogue: updated.demo_rogue,
         data: { approve_url: o.approve_url, order_status: o.status, authorised_by: authorisedBy, paypal_mode: this.paypal.mode },
       });
-      return this.cfg.checkoutMode === 'card' ? await this.capture(updated, authorisedBy, 'card_checkout') : updated;
+      if (this.cfg.checkoutMode !== 'card') return updated;
+      // Card checkout: PayPal may already have captured the payment while creating the order.
+      if (o.capture_id) return this.recordCaptured(updated, o.capture_id, authorisedBy, 'card_checkout');
+      return await this.capture(updated, authorisedBy, 'card_checkout');
     } catch (err) {
       const failed = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'failed' }) ?? this.store.getPurchase(p.id)!;
       this.evidence.append({
@@ -218,6 +221,20 @@ export class Gate {
       });
       return failed;
     }
+  }
+
+  /** A capture that PayPal already completed (card checkout): record it exactly like a capture call would. */
+  private recordCaptured(p: Purchase, captureId: string, authorisedBy: string, source: string): Purchase {
+    const done = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'completed', paypal_capture_id: captureId, completed_at: nowIso() });
+    if (!done) return this.store.getPurchase(p.id)!;
+    this.evidence.append({
+      decision: 'captured', mandate: this.snapshotFor(done), purchase_id: done.id, paypal_order_id: done.paypal_order_id,
+      choice: { sku: done.sku, price: done.amount.value },
+      budget_before: this.store.spentMoney(done.mandate_id), budget_after: this.store.spentMoney(done.mandate_id),
+      within_mandate: done.within_mandate, breaches: done.breaches, demo_rogue: done.demo_rogue,
+      data: { paypal_capture_id: captureId, authorised_by: authorisedBy, source },
+    });
+    return done;
   }
 
   /** Captures an order the payer has approved. Idempotent: a purchase leaves awaiting_payer at most once. */
@@ -352,5 +369,69 @@ export class Gate {
     return packet.action === 'provide_evidence'
       ? this.paypal.provideEvidence(ticket, d.paypal_dispute_id, { notes: packet.narrative })
       : this.paypal.acceptClaim(ticket, d.paypal_dispute_id, { note: packet.narrative });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Refund on breach (feature B1)
+  // ---------------------------------------------------------------------------------------------
+  /**
+   * After a human accepts the claim on a MANDATE_BREACH verdict, give the buyer the money back through the PayPal
+   * refund API. Only for SIMULATED disputes: on a real PayPal dispute, PayPal's own accept-claim already refunds the
+   * buyer, so refunding here as well would pay twice (that case is recorded from the PAYMENT.CAPTURE.REFUNDED webhook).
+   * The ticket is minted for the dispute, authorised by the human who submitted it.
+   */
+  async refundForBreach(d: Dispute, packet: DisputePacket, by: string): Promise<DisputeRefund> {
+    if (packet.verdict !== 'MANDATE_BREACH' || packet.action !== 'accept_claim') throw invalidState('Only a MANDATE_BREACH verdict is refunded');
+    if (!d.simulated && d.paypal_dispute_id) throw invalidState('A real PayPal dispute is refunded by PayPal when the claim is accepted');
+    if (!d.purchase_id) throw invalidState('This dispute is not linked to a purchase');
+    const p = this.store.getPurchase(d.purchase_id);
+    if (!p) throw notFound(`Purchase ${d.purchase_id} not found`);
+    if (p.status === 'refunded') throw invalidState(`Purchase ${p.id} is already refunded`);
+    if (!p.paypal_capture_id) throw invalidState(`Purchase ${p.id} has no PayPal capture to refund`);
+
+    const spentBefore = this.store.spentMoney(p.mandate_id);
+    const ticket = mintTicket(d.id, `human:${by}`);
+    let result;
+    try {
+      result = await this.paypal.refundCapture(ticket, p.paypal_capture_id, {
+        amount: { currency_code: p.amount.currency_code, value: p.amount.value },
+        note: `Refund: this purchase was outside the buyer's signed spending mandate (Sentry dispute ${d.id}).`,
+        requestId: d.id,
+      });
+    } catch (err) {
+      this.evidence.append({
+        decision: 'refund_failed', mandate: this.snapshotFor(p), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+        choice: { sku: p.sku, price: p.amount.value }, budget_before: spentBefore, budget_after: spentBefore,
+        within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+        data: { dispute_id: d.id, paypal_capture_id: p.paypal_capture_id, authorised_by: `human:${by}`, error: errInfo(err) },
+      });
+      throw err;
+    }
+    return this.recordRefund(p, { paypal_refund_id: result.paypal_refund_id, status: result.status, source: 'refund_api', dispute_id: d.id, by }, spentBefore);
+  }
+
+  /** Webhook PAYMENT.CAPTURE.REFUNDED: record a refund made at PayPal (accept-claim on a real dispute, or the dashboard). */
+  onCaptureRefunded(captureId: string, refundId: string | null, status: string | null): Purchase | null {
+    const p = this.store.listPurchases().find((x) => x.paypal_capture_id === captureId);
+    if (!p) return null;
+    if (p.status === 'refunded') return p; // already recorded (our own refund, or a repeated webhook)
+    this.recordRefund(p, { paypal_refund_id: refundId ?? 'unknown', status: status ?? 'COMPLETED', source: 'accept_claim', dispute_id: p.dispute_id, by: null }, this.store.spentMoney(p.mandate_id));
+    return this.store.getPurchase(p.id);
+  }
+
+  private recordRefund(p: Purchase, r: { paypal_refund_id: string; status: string; source: DisputeRefund['source']; dispute_id: string | null; by: string | null }, spentBefore: string): DisputeRefund {
+    // 'refunded' is not a spending status, so the month's budget is restored by the status change itself.
+    const refunded = this.store.updatePurchase(p.id, { status: 'refunded' });
+    this.evidence.append({
+      decision: 'refunded', mandate: this.snapshotFor(refunded), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+      choice: { sku: p.sku, price: p.amount.value },
+      budget_before: spentBefore, budget_after: this.store.spentMoney(p.mandate_id),
+      within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+      data: {
+        paypal_refund_id: r.paypal_refund_id, paypal_status: r.status, paypal_capture_id: p.paypal_capture_id,
+        amount: p.amount, source: r.source, dispute_id: r.dispute_id, ...(r.by ? { authorised_by: `human:${r.by}` } : {}),
+      },
+    });
+    return { paypal_refund_id: r.paypal_refund_id, status: r.status, amount: p.amount, source: r.source, refunded_at: nowIso() };
   }
 }

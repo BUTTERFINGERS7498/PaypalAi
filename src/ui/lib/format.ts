@@ -25,6 +25,7 @@ export const STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
   disputed: "Disputed",
   dispute_resolved: "Dispute resolved",
+  refunded: "Refunded",
 };
 
 export const DECISION_LABEL: Record<string, string> = {
@@ -38,6 +39,8 @@ export const DECISION_LABEL: Record<string, string> = {
   captured: "Payment captured",
   mandate_revoked: "Mandate revoked",
   clarify: "Agent asked a question",
+  refunded: "Refunded at PayPal",
+  refund_failed: "Refund failed at PayPal",
 };
 
 export const REASON_LABEL: Record<string, string> = {

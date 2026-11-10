@@ -3,13 +3,15 @@
 import type { Purchase } from '../types.ts';
 import { assertTicket, type ApprovalTicket } from './ticket.ts';
 import {
-  PaypalError, type CapturedOrder, type CreatedOrder, type PaypalClient, type PaypalDispute, type WebhookHeaders,
+  PaypalError, type CapturedOrder, type CreatedOrder, type PaypalClient, type PaypalDispute, type RefundResult, type WebhookHeaders,
 } from './types.ts';
 
 export class MockPaypalClient implements PaypalClient {
   readonly mode = 'mock' as const;
   /** Every mutating call, for tests to assert on. */
-  readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim'; subject_id: string; target: string; detail?: unknown }[] = [];
+  readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim' | 'refund'; subject_id: string; target: string; detail?: unknown }[] = [];
+  /** capture id -> refund, so a repeated request id returns the same refund and a second refund is refused. */
+  private refunds = new Map<string, { requestId: string; result: RefundResult }>();
   private orders = new Map<string, { status: 'CREATED' | 'COMPLETED'; purchaseId: string }>();
   private disputes: PaypalDispute[] = [];
   private approved = new Set<string>();
@@ -60,6 +62,19 @@ export class MockPaypalClient implements PaypalClient {
     assertTicket(ticket);
     this.calls.push({ op: 'accept_claim', subject_id: ticket.subject_id, target: disputeId, detail: accept });
     return { mock: true, action: 'accept_claim', dispute_id: disputeId };
+  }
+
+  async refundCapture(ticket: ApprovalTicket, captureId: string, r: { amount: { currency_code: string; value: string }; note: string; requestId: string }): Promise<RefundResult> {
+    assertTicket(ticket);
+    if (captureId.endsWith('-NOREFUND')) throw new PaypalError('Mock PayPal refused the refund', 422, 'mock-debug-3');
+    const prior = this.refunds.get(captureId);
+    if (prior && prior.requestId === r.requestId) return prior.result; // idempotent, like PayPal-Request-Id
+    if (prior) throw new PaypalError(`Mock capture ${captureId} is already fully refunded (CAPTURE_FULLY_REFUNDED)`, 422, 'mock-debug-4');
+    this.counter += 1;
+    const result: RefundResult = { paypal_refund_id: `REFUND-MOCK-${String(this.counter).padStart(4, '0')}`, status: 'COMPLETED' };
+    this.refunds.set(captureId, { requestId: r.requestId, result });
+    this.calls.push({ op: 'refund', subject_id: ticket.subject_id, target: captureId, detail: r });
+    return result;
   }
 
   async verifyWebhook(h: WebhookHeaders, _event: unknown): Promise<boolean> {

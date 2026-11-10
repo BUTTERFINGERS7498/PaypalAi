@@ -46,7 +46,7 @@ export interface CatalogItem {
 }
 
 export type PurchaseStatus =
-  | 'pending_approval' | 'rejected' | 'awaiting_payer' | 'completed' | 'failed' | 'disputed' | 'dispute_resolved';
+  | 'pending_approval' | 'rejected' | 'awaiting_payer' | 'completed' | 'failed' | 'disputed' | 'dispute_resolved' | 'refunded';
 
 export interface Purchase {
   id: string;
@@ -85,7 +85,7 @@ export interface Approval {
 
 export type EvidenceDecision =
   | 'selected' | 'needs_approval' | 'blocked' | 'no_match' | 'approved' | 'rejected'
-  | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked' | 'clarify';
+  | 'order_created' | 'order_failed' | 'captured' | 'mandate_revoked' | 'clarify' | 'refunded' | 'refund_failed';
 
 export interface EvidenceOption {
   sku: string;
@@ -128,6 +128,17 @@ export interface DisputePacket {
   assembled_at: string;
   submitted_at: string | null;
   paypal_response: Record<string, unknown> | null;
+  /** Set when accepting the claim refunded the buyer at PayPal (feature B1). */
+  refund?: DisputeRefund | null;
+}
+
+export interface DisputeRefund {
+  paypal_refund_id: string;
+  status: string;
+  amount: Money;
+  /** 'refund_api' = Sentry refunded the capture; 'accept_claim' = PayPal refunded as part of accepting a real dispute */
+  source: 'refund_api' | 'accept_claim';
+  refunded_at: string;
 }
 
 export interface Dispute {

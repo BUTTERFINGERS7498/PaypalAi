@@ -85,6 +85,13 @@ export class WebhookHandler {
         : null;
       return this.done(event.id, p?.id ?? null, p ? null : 'unknown_purchase');
     }
+    if (type === 'PAYMENT.CAPTURE.REFUNDED') {
+      // The resource is the refund; its "up" link points at the capture it refunds.
+      const up = Array.isArray(res.links) ? res.links.find((l: any) => l?.rel === 'up' && typeof l.href === 'string') : null;
+      const captureId: string | undefined = up?.href?.match(/\/captures\/([^/?#]+)/)?.[1];
+      const p = captureId ? this.gate.onCaptureRefunded(captureId, res.id ?? null, res.status ?? null) : null;
+      return this.done(event.id, p?.id ?? null, p ? null : 'unknown_purchase');
+    }
     if (type.startsWith('CUSTOMER.DISPUTE.')) {
       const ppId: string | undefined = res.dispute_id;
       if (!ppId) return this.done(event.id, null, 'missing_dispute_id');

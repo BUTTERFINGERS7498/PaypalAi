@@ -35,7 +35,8 @@ export type PurchaseStatus =
   | "rejected"
   | "failed"
   | "disputed"
-  | "dispute_resolved";
+  | "dispute_resolved"
+  | "refunded";
 
 export interface Purchase {
   id: string;
@@ -82,7 +83,9 @@ export type Decision =
   | "order_created"
   | "captured"
   | "mandate_revoked"
-  | "clarify";
+  | "clarify"
+  | "refunded"
+  | "refund_failed";
 
 export interface EvidenceRecord {
   record_id: string;
@@ -116,6 +119,8 @@ export interface DisputePacket {
   assembled_at: string;
   submitted_at: string | null;
   paypal_response: unknown;
+  /** Set when accepting the claim refunded the buyer at PayPal. */
+  refund?: { paypal_refund_id: string; status: string; amount: Money; source: "refund_api" | "accept_claim"; refunded_at: string } | null;
 }
 
 export interface Dispute {

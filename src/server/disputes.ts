@@ -5,8 +5,8 @@ import type { EvidenceLog } from './evidence.ts';
 import type { Gate } from './gate.ts';
 import type { PaypalClient } from './paypal/types.ts';
 import type { Store } from './store.ts';
-import type { Dispute, DisputePacket, EvidenceRecord, Purchase } from './types.ts';
-import { badRequest, formatMoney, invalidState, notFound, nowIso, upstream } from './util.ts';
+import type { Dispute, DisputePacket, DisputeRefund, EvidenceRecord, Purchase } from './types.ts';
+import { badRequest, formatMoney, HttpError, invalidState, notFound, nowIso, upstream } from './util.ts';
 
 export class DisputeService {
   private store: Store;
@@ -112,7 +112,19 @@ export class DisputeService {
     } catch (err) {
       throw upstream(`PayPal rejected the dispute response: ${err instanceof Error ? err.message : String(err)}`);
     }
-    const packet: DisputePacket = { ...d.packet, submitted_at: nowIso(), paypal_response: response };
+    // Feature B1: accepting the claim on a breach gives the money back. For a simulated dispute Sentry calls the
+    // refund API; for a real one PayPal refunds as part of accept-claim (recorded from the webhook).
+    // If the refund fails the dispute is NOT marked submitted, so it can be retried (the refund is idempotent).
+    let refund: DisputeRefund | null = null;
+    if (d.packet.verdict === 'MANDATE_BREACH' && (d.simulated || !d.paypal_dispute_id)) {
+      try {
+        refund = await this.gate.refundForBreach(d, d.packet, by);
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw upstream(`PayPal refused the refund: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const packet: DisputePacket = { ...d.packet, submitted_at: nowIso(), paypal_response: response, refund };
     return this.store.updateDispute(id, { packet, status: 'submitted' });
   }
 
