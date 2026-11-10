@@ -85,6 +85,11 @@ export class WebhookHandler {
         : null;
       return this.done(event.id, p?.id ?? null, p ? null : 'unknown_purchase');
     }
+    if (type === 'PAYMENT.AUTHORIZATION.VOIDED') {
+      // A hold was voided at PayPal (dashboard, or after it expired). Our own voids find the purchase already closed.
+      const p = res.id ? this.gate.onAuthorizationVoided(String(res.id)) : null;
+      return this.done(event.id, p?.id ?? null, p ? null : 'unknown_purchase');
+    }
     if (type === 'PAYMENT.CAPTURE.REFUNDED') {
       // The resource is the refund; its "up" link points at the capture it refunds.
       const up = Array.isArray(res.links) ? res.links.find((l: any) => l?.rel === 'up' && typeof l.href === 'string') : null;

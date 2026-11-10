@@ -124,6 +124,11 @@ export class SandboxPaypalClient implements PaypalClient {
     return { paypal_capture_id: String(res.id) };
   }
 
+  async getAuthorization(authorizationId: string): Promise<{ status: string; expiration_time: string | null }> {
+    const res = await this.call('GET', `/v2/payments/authorizations/${encodeURIComponent(authorizationId)}`);
+    return { status: String(res.status ?? 'UNKNOWN'), expiration_time: res.expiration_time ?? null };
+  }
+
   async voidAuthorization(ticket: ApprovalTicket, authorizationId: string): Promise<{ status: string }> {
     assertTicket(ticket);
     // Checked 2026-11-11: returns 200 VOIDED with Prefer: return=representation (204 without it).

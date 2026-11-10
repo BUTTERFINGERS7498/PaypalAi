@@ -206,7 +206,8 @@ export function buildHandler(s: Services): (req: IncomingMessage, res: ServerRes
       enforceLimit(reconcileLimiter, req, 'reconcile');
       const p = store.getPurchase(m[1]);
       if (!p) throw notFound(`Purchase ${m[1]} not found`);
-      const r = await gate.reconcilePurchase(p);
+      // A purchase waiting for a human with money held: check the hold instead.
+      const r = p.status === 'pending_approval' && p.paypal_authorization_id ? await gate.checkHold(p) : await gate.reconcilePurchase(p);
       return sendJson(res, 200, { purchase: r.purchase, action: r.action, paypal_status: r.paypal_status ?? null });
     }
 
@@ -300,7 +301,7 @@ function main(): void {
       if (running) return;
       running = true;
       services.gate.reconcileAll()
-        .then((r) => { if (r.captured || r.completed) console.log(`[reconcile] checked=${r.checked} captured=${r.captured} completed=${r.completed}`); })
+        .then((r) => { if (r.captured || r.completed || r.holds_lost) console.log(`[reconcile] checked=${r.checked} captured=${r.captured} completed=${r.completed} holds_checked=${r.holds_checked} holds_lost=${r.holds_lost}`); })
         .catch((err) => console.error('[reconcile] pass failed:', err instanceof Error ? err.message : err))
         .finally(() => { running = false; });
     }, cfg.reconcileIntervalSeconds * 1000);

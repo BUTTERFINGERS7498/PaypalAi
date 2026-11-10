@@ -6,6 +6,9 @@ Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-r
 ## Breaking changes
 _Newest first. Every breaking change gets a dated line here._
 
+- 2026-11-11 (additive, not breaking) — lost holds: purchase field `hold_expires_at` (new column, migrated); webhook
+  `PAYMENT.AUTHORIZATION.VOIDED`; the reconcile pass and `POST /api/purchases/:id/reconcile` also check held purchases
+  (actions `held`, `hold_lost`); an expired or dropped hold is never captured: approval falls back to a fresh order.
 - 2026-11-11 (additive, not breaking) — holds: env `APPROVAL_HOLD=authorize` (with `CHECKOUT_MODE=card`); purchase field
   `paypal_authorization_id` (new column, migrated on boot); evidence decisions `authorized`, `voided`; `captured` gains
   `data.source: "authorization"`. Refund webhook now only frees the budget for a COMPLETED refund covering the full amount.
@@ -416,6 +419,7 @@ Envelope: `{ "id": "WH-…", "event_type": "…", "resource_type": "…", "creat
 | `CHECKOUT.ORDER.APPROVED` | `resource.id` (order id) | purchase `awaiting_payer` → capture executes through the gate → `completed`; evidence `captured` |
 | `PAYMENT.CAPTURE.COMPLETED` | `resource.id` (capture id), `resource.supplementary_data.related_ids.order_id` | purchase → `completed` if not already; `paypal_capture_id` set |
 | `PAYMENT.CAPTURE.DENIED` | same | purchase → `failed` |
+| `PAYMENT.AUTHORIZATION.VOIDED` | `resource.id` (authorization id) | a purchase still waiting for approval loses its hold: `paypal_authorization_id` and `hold_expires_at` cleared, evidence `voided` (`reason: voided_at_paypal`, `source: webhook`); approving later creates a fresh order. A void Sentry made itself (reject, revoke) is a no-op |
 | `PAYMENT.CAPTURE.REFUNDED` | `resource.id` (refund id), `resource.status`, `resource.amount`, `resource.seller_payable_breakdown.total_refunded_amount`, `resource.links[rel=up]` (the capture) | evidence `refunded` (`data.final`, recorded once per refund id + status); purchase → `refunded` only if `COMPLETED` and the total refunded covers the purchase amount |
 | `CUSTOMER.DISPUTE.CREATED` | `resource.dispute_id`, `resource.disputed_transactions[0].seller_transaction_id` / order id, `resource.reason`, `resource.dispute_amount` | create/link a Dispute (`open`); purchase → `disputed` |
 | `CUSTOMER.DISPUTE.UPDATED` | `resource.dispute_id`, `resource.status` | update the Dispute |

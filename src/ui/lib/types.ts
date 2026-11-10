@@ -56,6 +56,7 @@ export interface Purchase {
   paypal_capture_id: string | null;
   /** Set while the money is held at PayPal for a human decision. */
   paypal_authorization_id?: string | null;
+  hold_expires_at?: string | null;
   approval_id: string | null;
   dispute_id: string | null;
   created_at: string;

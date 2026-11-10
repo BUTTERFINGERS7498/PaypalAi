@@ -57,6 +57,8 @@ export interface PaypalClient {
   createOrder(ticket: ApprovalTicket, purchase: Purchase, opts?: { intent?: 'CAPTURE' | 'AUTHORIZE' }): Promise<CreatedOrder>;
   /** Take the money held by an authorization. `requestId` makes it idempotent. */
   captureAuthorization(ticket: ApprovalTicket, authorizationId: string, requestId: string): Promise<CapturedOrder>;
+  /** Read-only: the authorization's current state at PayPal (CREATED, CAPTURED, VOIDED, EXPIRED, DENIED...). */
+  getAuthorization(authorizationId: string): Promise<{ status: string; expiration_time: string | null }>;
   /** Release the money held by an authorization. */
   voidAuthorization(ticket: ApprovalTicket, authorizationId: string): Promise<{ status: string }>;
   captureOrder(ticket: ApprovalTicket, paypalOrderId: string): Promise<CapturedOrder>;

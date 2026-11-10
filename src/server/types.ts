@@ -66,6 +66,8 @@ export interface Purchase {
   paypal_capture_id: string | null;
   /** Set while the money is held at PayPal for a human decision (APPROVAL_HOLD=authorize). */
   paypal_authorization_id: string | null;
+  /** When PayPal will drop the hold (authorizations last 29 days; the first 3 are the honor period). */
+  hold_expires_at: string | null;
   approval_id: string | null;
   dispute_id: string | null;
   created_at: string;

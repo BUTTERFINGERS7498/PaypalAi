@@ -37,6 +37,12 @@ export interface SelectionOutcome {
 }
 
 const toOption = (i: CatalogItem): EvidenceOption => ({ sku: i.sku, name: i.name, category: i.category, price: i.price.value });
+/** PayPal authorizations last 29 days (the first 3 are the "honor period", when the funds are guaranteed). */
+const HOLD_DAYS = 29;
+export const HONOR_DAYS = 3;
+/** Authorization states that mean the money is no longer held. */
+const LOST_HOLD = new Set(['VOIDED', 'EXPIRED', 'DENIED']);
+
 const errInfo = (err: unknown) => ({
   message: err instanceof Error ? err.message : String(err),
   ...(err instanceof PaypalError && err.debug_id ? { paypal_debug_id: err.debug_id } : {}),
@@ -205,7 +211,9 @@ export class Gate {
     try {
       const o = await this.paypal.createOrder(ticket, p, { intent: 'AUTHORIZE' });
       if (!o.authorization_id) return failed(new Error(`PayPal returned no authorization (order status ${o.status})`));
-      const held = this.store.updatePurchase(p.id, { paypal_order_id: o.paypal_order_id, paypal_authorization_id: o.authorization_id });
+      // PayPal authorizations last 29 days; use PayPal's own expiry when it gives one.
+      const expires = o.authorization_expires ?? new Date(Date.now() + HOLD_DAYS * 86_400_000).toISOString();
+      const held = this.store.updatePurchase(p.id, { paypal_order_id: o.paypal_order_id, paypal_authorization_id: o.authorization_id, hold_expires_at: expires });
       this.evidence.append({
         decision: 'authorized', mandate: this.snapshotFor(held), purchase_id: held.id, paypal_order_id: o.paypal_order_id,
         choice: { sku: held.sku, price: held.amount.value },
@@ -219,13 +227,35 @@ export class Gate {
     }
   }
 
-  /** The human approved: capture the held authorization. Expects the purchase already moved to awaiting_payer. */
+  /**
+   * The human approved: capture the held authorization. Expects the purchase already moved to awaiting_payer.
+   * A hold that has expired is never captured. If the capture fails and PayPal says the hold is gone (voided, expired,
+   * denied), the approval still stands, so a fresh order is created exactly as without a hold (card checkout). Any
+   * other failure fails the purchase, as before.
+   */
   private async captureHold(p: Purchase, authorisedBy: string): Promise<Purchase> {
+    if (p.hold_expires_at && Date.parse(p.hold_expires_at) <= Date.now()) {
+      const cleared = this.onHoldLost(p, 'expired', 'approval');
+      return this.checkout(cleared, authorisedBy);
+    }
     const ticket = mintTicket(p.id, authorisedBy);
     try {
       const cap = await this.paypal.captureAuthorization(ticket, p.paypal_authorization_id!, p.id);
       return this.recordCaptured(p, cap.paypal_capture_id, authorisedBy, 'authorization');
     } catch (err) {
+      let status: string | null = null;
+      try { status = (await this.paypal.getAuthorization(p.paypal_authorization_id!)).status; } catch { status = null; }
+      if (status && LOST_HOLD.has(status)) {
+        this.evidence.append({
+          decision: 'order_failed', mandate: this.snapshotFor(p), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+          choice: { sku: p.sku, price: p.amount.value },
+          budget_before: this.store.spentMoney(p.mandate_id), budget_after: this.store.spentMoney(p.mandate_id),
+          within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+          data: { stage: 'capture_authorization', paypal_authorization_id: p.paypal_authorization_id, paypal_status: status, authorised_by: authorisedBy, error: errInfo(err), note: 'the hold is gone at PayPal; a new order is created instead' },
+        });
+        const cleared = this.onHoldLost(p, status === 'VOIDED' ? 'voided_at_paypal' : status === 'DENIED' ? 'denied' : 'expired', 'approval');
+        return this.checkout(cleared, authorisedBy);
+      }
       const failed = this.store.transitionPurchase(p.id, 'awaiting_payer', { status: 'failed' }) ?? this.store.getPurchase(p.id)!;
       this.evidence.append({
         decision: 'order_failed', mandate: this.snapshotFor(failed), purchase_id: failed.id, paypal_order_id: failed.paypal_order_id,
@@ -236,6 +266,32 @@ export class Gate {
       });
       return failed;
     }
+  }
+
+  /**
+   * The hold disappeared at PayPal (voided from the dashboard, expired after 29 days, or denied). Record it once and
+   * clear it from the purchase. The approval request stays as it was: approving later creates a fresh order.
+   * Works for a purchase still waiting (pending_approval) or one being approved right now (awaiting_payer).
+   */
+  onHoldLost(p: Purchase, reason: 'voided_at_paypal' | 'expired' | 'denied', source: 'webhook' | 'reconcile' | 'approval'): Purchase {
+    if (!p.paypal_authorization_id || (p.status !== 'pending_approval' && p.status !== 'awaiting_payer')) return p;
+    const authId = p.paypal_authorization_id;
+    const cleared = this.store.updatePurchase(p.id, { paypal_authorization_id: null, hold_expires_at: null });
+    this.evidence.append({
+      decision: 'voided', mandate: this.snapshotFor(cleared), purchase_id: p.id, paypal_order_id: p.paypal_order_id,
+      choice: { sku: p.sku, price: p.amount.value },
+      budget_before: this.store.spentMoney(p.mandate_id), budget_after: this.store.spentMoney(p.mandate_id),
+      within_mandate: p.within_mandate, breaches: p.breaches, demo_rogue: p.demo_rogue,
+      data: { paypal_authorization_id: authId, reason, source, note: 'the hold is gone at PayPal; nothing was charged' },
+    });
+    return cleared;
+  }
+
+  /** Webhook PAYMENT.AUTHORIZATION.VOIDED. Our own voids (reject, revoke) find the purchase already closed: no-op. */
+  onAuthorizationVoided(authorizationId: string): Purchase | null {
+    const p = this.store.listPurchases().find((x) => x.paypal_authorization_id === authorizationId);
+    if (!p) return null;
+    return this.onHoldLost(p, 'voided_at_paypal', 'webhook');
   }
 
   /** Release a hold (rejected, or the mandate no longer allows it). A failed void is recorded; the hold then expires at PayPal. */
@@ -417,8 +473,33 @@ export class Gate {
     return { purchase: p, action: 'waiting', paypal_status: order.status };
   }
 
-  /** One pass over recent awaiting_payer purchases (bounded: newest 10 from the last 24 hours). */
-  async reconcileAll(): Promise<{ checked: number; captured: number; completed: number }> {
+  /**
+   * Safety net for holds: is the money still held at PayPal for this purchase that waits for a human? A hold past its
+   * expiry is treated as gone without asking; otherwise PayPal is asked (read-only). Gone -> onHoldLost.
+   */
+  async checkHold(p: Purchase): Promise<{ purchase: Purchase; action: 'held' | 'hold_lost' | 'skipped' | 'error'; paypal_status?: string }> {
+    if (p.status !== 'pending_approval' || !p.paypal_authorization_id) return { purchase: p, action: 'skipped' };
+    if (p.hold_expires_at && Date.parse(p.hold_expires_at) <= Date.now()) {
+      return { purchase: this.onHoldLost(p, 'expired', 'reconcile'), action: 'hold_lost', paypal_status: 'EXPIRED' };
+    }
+    let status: string;
+    try {
+      status = (await this.paypal.getAuthorization(p.paypal_authorization_id)).status;
+    } catch {
+      return { purchase: p, action: 'error' };
+    }
+    if (LOST_HOLD.has(status)) {
+      const reason = status === 'VOIDED' ? 'voided_at_paypal' as const : status === 'DENIED' ? 'denied' as const : 'expired' as const;
+      return { purchase: this.onHoldLost(p, reason, 'reconcile'), action: 'hold_lost', paypal_status: status };
+    }
+    return { purchase: p, action: 'held', paypal_status: status };
+  }
+
+  /**
+   * One pass of the safety net: recent awaiting_payer purchases (newest 10 from the last 24 hours) and held purchases
+   * waiting for a human (the 10 that expire first; holds can last 29 days, so no 24-hour cutoff).
+   */
+  async reconcileAll(): Promise<{ checked: number; captured: number; completed: number; holds_checked: number; holds_lost: number }> {
     const cutoff = Date.now() - 24 * 3600_000;
     const pending = this.store.listPurchases({ status: 'awaiting_payer' })
       .filter((p) => p.paypal_order_id && Date.parse(p.created_at) > cutoff)
@@ -430,7 +511,13 @@ export class Gate {
       if (r.action === 'captured') captured += 1;
       if (r.action === 'completed') completed += 1;
     }
-    return { checked: pending.length, captured, completed };
+    const holds = this.store.listPurchases({ status: 'pending_approval' })
+      .filter((p) => p.paypal_authorization_id)
+      .sort((a, b) => (a.hold_expires_at ?? '').localeCompare(b.hold_expires_at ?? ''))
+      .slice(0, 10);
+    let lost = 0;
+    for (const p of holds) if ((await this.checkHold(p)).action === 'hold_lost') lost += 1;
+    return { checked: pending.length, captured, completed, holds_checked: holds.length, holds_lost: lost };
   }
 
   /** Webhook PAYMENT.CAPTURE.COMPLETED. Fills in the capture id; completes the purchase if we have not already. */

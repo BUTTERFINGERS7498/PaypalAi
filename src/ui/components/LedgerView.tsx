@@ -10,6 +10,9 @@ import { Chip, Flags, Notice, Section, StatusChip, useAction } from "./ui";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+/** PayPal guarantees held funds for 3 days (the honor period). */
+const HONOR_MS = 3 * 86_400_000;
+
 const gridTheme = themeQuartz.withParams({
   backgroundColor: "#fffdf8",
   foregroundColor: "#17130f",
@@ -149,8 +152,15 @@ function ApprovalQueue() {
               <div>
                 <strong>{a.summary}</strong>
                 {held && p && (
-                  <div style={{ margin: "4px 0" }}>
-                    <Chip tone="info" title={`PayPal authorization ${p.paypal_authorization_id}`}>{fmtMoney(p.amount)} held at PayPal · not charged yet</Chip>
+                  <div className="row wrap" style={{ margin: "4px 0", gap: 6 }}>
+                    <Chip tone="info" title={`PayPal authorization ${p.paypal_authorization_id}`}>
+                      {fmtMoney(p.amount)} held at PayPal · not charged yet{p.hold_expires_at ? ` · until ${fmtTime(p.hold_expires_at)}` : ""}
+                    </Chip>
+                    {Date.now() - Date.parse(p.created_at) > HONOR_MS && (
+                      <Chip tone="warn" title="PayPal guarantees held funds for 3 days. After that the capture can fail; Sentry then places a new order instead.">
+                        past PayPal&apos;s 3-day honor period
+                      </Chip>
+                    )}
                   </div>
                 )}
                 <div className="muted small">

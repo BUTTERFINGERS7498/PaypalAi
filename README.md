@@ -366,7 +366,9 @@ With `APPROVAL_HOLD=authorize` and `CHECKOUT_MODE=card`, a purchase above the ap
 - **Reject and release hold**: the authorization is voided at PayPal.
 - If the mandate was revoked or the budget used up in the meantime, approving voids the hold instead of capturing.
 
-Each step is ticketed by the gate and written to the evidence chain (`authorized`, `captured` with `source: authorization`, `voided`). Held money does not count against the cap until it is captured. If PayPal will not place a hold, the failure is recorded and the approval works the old way. Holds need card checkout, because with buyer approval the hold would first wait for the buyer to log in at PayPal.
+Each step is ticketed by the gate and written to the evidence chain (`authorized`, `captured` with `source: authorization`, `voided`). Held money does not count against the cap until it is captured.
+
+**When a hold disappears at PayPal** (voided from the dashboard, expired after 29 days, or denied), Sentry notices it three ways: the `PAYMENT.AUTHORIZATION.VOIDED` webhook, the reconcile pass (which now also asks PayPal about every held purchase), and at approval time (an expired hold is never captured, and a failed capture is checked against PayPal). In each case the loss is recorded as `voided` with its reason and source, the hold is cleared, and the request keeps waiting: approving it later places a fresh order. The approval queue shows when each hold expires, and warns once a hold is past PayPal's 3-day honor period. Checked on the sandbox: a hold voided outside Sentry was detected by the reconcile route, and approving then created and captured a new order. If PayPal will not place a hold, the failure is recorded and the approval works the old way. Holds need card checkout, because with buyer approval the hold would first wait for the buyer to log in at PayPal.
 
 #### Refund on breach
 

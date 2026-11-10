@@ -94,6 +94,84 @@ test('revoking a mandate rejects what was waiting on it and releases the money h
   assert.deepEqual(await b.s.gate.onMandateRevoked(b.mandate.id), { closed: 0, released: 0 });
 });
 
+// ---------- holds that disappear at PayPal ----------
+
+const voidedEvent = (id: string, authId: string) => ({ id, event_type: 'PAYMENT.AUTHORIZATION.VOIDED', resource_type: 'authorization', resource: { id: authId, status: 'VOIDED' } });
+
+test('a hold records when it expires (29 days by default)', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  const days = (Date.parse(r.purchase!.hold_expires_at!) - Date.now()) / 86_400_000;
+  assert.ok(days > 28.9 && days <= 29, `expires in ${days.toFixed(2)} days`);
+});
+
+test('PAYMENT.AUTHORIZATION.VOIDED: the hold is cleared and recorded; approving later creates a fresh order', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  const authId = r.purchase!.paypal_authorization_id!;
+  b.paypal.expireAuthorization(authId, 'VOIDED');
+  await b.s.webhooks.handle({}, voidedEvent('WH-V-1', authId));
+  const p = b.s.store.getPurchase(r.purchase!.id)!;
+  assert.equal(p.status, 'pending_approval', 'still waiting for the human');
+  assert.equal(p.paypal_authorization_id, null);
+  const ev = b.s.evidence.forPurchase(p.id).find((e) => e.decision === 'voided')!;
+  assert.deepEqual([ev.data.reason, ev.data.source, ev.data.paypal_authorization_id], ['voided_at_paypal', 'webhook', authId]);
+  // A repeated delivery changes nothing.
+  await b.s.webhooks.handle({}, voidedEvent('WH-V-2', authId));
+  assert.equal(b.s.evidence.forPurchase(p.id).filter((e) => e.decision === 'voided').length, 1);
+
+  const out = await b.s.gate.approve(r.approval!.id, 'qa', null);
+  assert.equal(out.purchase.status, 'completed');
+  assert.equal(b.paypal.calls.filter((c) => c.op === 'capture_authorization').length, 0, 'no capture of a hold that is gone');
+  assert.deepEqual(b.paypal.calls.filter((c) => c.op === 'create_order').map((c) => (c.detail as { intent: string }).intent), ['AUTHORIZE', 'CAPTURE']);
+});
+
+test('the webhook for a void Sentry made itself (reject) is a no-op', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  await b.s.gate.reject(r.approval!.id, 'qa', null);
+  const before = b.s.evidence.forPurchase(r.purchase!.id).length;
+  await b.s.webhooks.handle({}, voidedEvent('WH-V-3', r.purchase!.paypal_authorization_id!));
+  assert.equal(b.s.evidence.forPurchase(r.purchase!.id).length, before);
+  assert.equal(b.s.store.getPurchase(r.purchase!.id)!.status, 'rejected');
+});
+
+test('the reconcile pass notices a hold that expired at PayPal', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  assert.deepEqual(await b.s.gate.reconcileAll(), { checked: 0, captured: 0, completed: 0, holds_checked: 1, holds_lost: 0 });
+  b.paypal.expireAuthorization(r.purchase!.paypal_authorization_id!);
+  const pass = await b.s.gate.reconcileAll();
+  assert.equal(pass.holds_lost, 1);
+  assert.equal(b.s.store.getPurchase(r.purchase!.id)!.paypal_authorization_id, null);
+  const ev = b.s.evidence.forPurchase(r.purchase!.id).find((e) => e.decision === 'voided')!;
+  assert.deepEqual([ev.data.reason, ev.data.source], ['expired', 'reconcile']);
+});
+
+test('a hold past its expiry is never captured: approving creates a fresh order instead', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  b.s.store.updatePurchase(r.purchase!.id, { hold_expires_at: new Date(Date.now() - 60_000).toISOString() });
+  const out = await b.s.gate.approve(r.approval!.id, 'qa', null);
+  assert.equal(out.purchase.status, 'completed');
+  assert.equal(b.paypal.calls.filter((c) => c.op === 'capture_authorization').length, 0);
+  const ev = b.s.evidence.forPurchase(r.purchase!.id).find((e) => e.decision === 'voided')!;
+  assert.deepEqual([ev.data.reason, ev.data.source], ['expired', 'approval']);
+});
+
+test('if the capture fails because PayPal dropped the hold, the approval still goes through with a fresh order', async () => {
+  const b = boot();
+  const r = await heldPurchase(b);
+  b.paypal.failNextCapture(r.purchase!.paypal_authorization_id!);
+  const out = await b.s.gate.approve(r.approval!.id, 'qa', null);
+  assert.equal(out.purchase.status, 'completed');
+  const records = b.s.evidence.forPurchase(r.purchase!.id);
+  assert.ok(records.some((e) => e.decision === 'order_failed' && e.data.stage === 'capture_authorization' && e.data.paypal_status === 'EXPIRED'));
+  assert.ok(records.some((e) => e.decision === 'voided' && e.data.source === 'approval'));
+  assert.ok(records.some((e) => e.decision === 'captured'));
+  assert.equal(b.s.evidence.verify().valid, true);
+});
+
 test('if PayPal will not place the hold, the approval still works the old way and the failure is recorded', async () => {
   const b = boot();
   const r = await b.s.agent.handle({ mandate_id: b.mandate.id, text: 'buy sku GRO-BIG-FAIL' });

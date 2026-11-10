@@ -19,6 +19,14 @@ and were killed; nothing is running. Their briefs are in `handoffs/`. Follow-ups
 To restart an agent: `hc run --bg --name <n> --cwd <repo> claude|codex`, then `hc send`/`hc keys <n> enter`.
 
 ## Done (verified by running it)
+- **B2 gaps closed (2026-11-11, uncommitted):** `Gate.onHoldLost` (shared rule: evidence `voided` with reason/source, clear
+  `paypal_authorization_id` + new column `hold_expires_at`, request keeps waiting, approve then makes a fresh order),
+  `onAuthorizationVoided` (webhook `PAYMENT.AUTHORIZATION.VOIDED`), `checkHold` + `reconcileAll` (holds too) + reconcile route,
+  `captureHold` never captures an expired hold and falls back when PayPal says VOIDED/EXPIRED/DENIED. Client
+  `getAuthorization`. UI: expiry date + honor-period warning in the approval queue. 6 new tests (`npm test` 70 pass).
+  **Real sandbox:** hold 70B14014LC019521E voided outside Sentry -> reconcile `hold_lost` -> approve made order
+  7L791707KA167390M / capture 09U8117956416372H. NOT checked: a real PayPal webhook delivery of
+  PAYMENT.AUTHORIZATION.VOIDED (the PayPal app's webhook subscription may need that event, and PAYMENT.CAPTURE.REFUNDED, added).
 - **Seed approval line lowered to $40 + revoke closes pending approvals (2026-11-11):** `src/server/seed.ts`, `infra/verify-seed.ts`,
   UI mock + landing + README. `Gate.onMandateRevoked` (called by the revoke route) rejects pending approvals as
   `system:mandate_revoked` and voids holds (security-review finding). `tests/checker.test.ts` updated; `npm test` 64 pass.

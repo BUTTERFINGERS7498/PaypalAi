@@ -23,6 +23,7 @@ export function openDb(databasePath: string): Db {
 function migrate(db: Db): void {
   const has = (table: string, col: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === col);
   if (!has('purchases', 'paypal_authorization_id')) db.exec('ALTER TABLE purchases ADD COLUMN paypal_authorization_id TEXT');
+  if (!has('purchases', 'hold_expires_at')) db.exec('ALTER TABLE purchases ADD COLUMN hold_expires_at TEXT');
 }
 
 /** Run fn inside an immediate transaction (node:sqlite has no helper). Not re-entrant. */

@@ -11,7 +11,7 @@ export class MockPaypalClient implements PaypalClient {
   /** Every mutating call, for tests to assert on. */
   readonly calls: { op: 'create_order' | 'capture' | 'provide_evidence' | 'accept_claim' | 'refund' | 'capture_authorization' | 'void_authorization'; subject_id: string; target: string; detail?: unknown }[] = [];
   /** authorization id -> state, for holds (intent AUTHORIZE). */
-  private auths = new Map<string, { status: 'CREATED' | 'CAPTURED' | 'VOIDED'; captureId: string | null }>();
+  private auths = new Map<string, { status: 'CREATED' | 'CAPTURED' | 'VOIDED' | 'EXPIRED'; captureId: string | null; failNextCapture?: boolean }>();
   /** capture id -> refund, so a repeated request id returns the same refund and a second refund is refused. */
   private refunds = new Map<string, { requestId: string; result: RefundResult }>();
   private orders = new Map<string, { status: 'CREATED' | 'COMPLETED'; purchaseId: string }>();
@@ -92,11 +92,30 @@ export class MockPaypalClient implements PaypalClient {
     const a = this.auths.get(authorizationId);
     if (!a) throw new PaypalError(`Mock authorization ${authorizationId} not found`, 404, 'mock-debug-5');
     if (a.status === 'CAPTURED') return { paypal_capture_id: a.captureId! }; // idempotent retry
-    if (a.status === 'VOIDED') throw new PaypalError(`Mock authorization ${authorizationId} is voided (AUTHORIZATION_VOIDED)`, 422, 'mock-debug-6');
+    if (a.status === 'VOIDED' || a.status === 'EXPIRED') throw new PaypalError(`Mock authorization ${authorizationId} is ${a.status.toLowerCase()} (AUTHORIZATION_${a.status})`, 422, 'mock-debug-6');
+    if (a.failNextCapture) { a.failNextCapture = false; a.status = 'EXPIRED'; throw new PaypalError(`Mock capture of ${authorizationId} failed (AUTHORIZATION_EXPIRED)`, 422, 'mock-debug-8'); }
     a.status = 'CAPTURED';
     a.captureId = `CAP-MOCK-${authorizationId.slice(-8)}`;
     this.calls.push({ op: 'capture_authorization', subject_id: ticket.subject_id, target: authorizationId, detail: { requestId } });
     return { paypal_capture_id: a.captureId };
+  }
+
+  async getAuthorization(authorizationId: string): Promise<{ status: string; expiration_time: string | null }> {
+    const a = this.auths.get(authorizationId);
+    if (!a) throw new PaypalError(`Mock authorization ${authorizationId} not found`, 404, 'mock-debug-5');
+    return { status: a.status, expiration_time: null };
+  }
+
+  /** Test hook: PayPal drops the hold (as it does after 29 days, or from the dashboard). */
+  expireAuthorization(authorizationId: string, status: 'EXPIRED' | 'VOIDED' = 'EXPIRED'): void {
+    const a = this.auths.get(authorizationId);
+    if (a) a.status = status;
+  }
+
+  /** Test hook: the next capture of this hold fails, and PayPal then reports it as EXPIRED. */
+  failNextCapture(authorizationId: string): void {
+    const a = this.auths.get(authorizationId);
+    if (a) a.failNextCapture = true;
   }
 
   async voidAuthorization(ticket: ApprovalTicket, authorizationId: string): Promise<{ status: string }> {
