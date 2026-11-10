@@ -333,3 +333,21 @@ test('a payout that is returned after succeeding takes the credit back', async (
   assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00', 'the purchase counts again');
   assert.ok(b.s.evidence.forPurchase(p.id).some((e) => e.decision === 'payout_failed' && e.data.reversed === true));
 });
+
+test('a payout check that arrives while another is running is queued, not dropped', async () => {
+  const b = boot();
+  const { p, d } = await breachWithFailedRefund(b);
+  const sent = await b.s.disputes.payout(d.id, 'qa');
+  // Two checks at once: the second waits for the first, then reads PayPal again.
+  const first = b.s.disputes.checkPayout(d.id);
+  b.paypal.reversePayout(sent.packet!.payout!.payout_batch_id); // PayPal changes state while the first check is queued
+  const second = b.s.disputes.checkPayout(d.id);
+  const [r1, r2] = await Promise.all([first, second]);
+  assert.ok(r1 && r2);
+  // Whatever the first saw, the second ran afterwards and the final state reflects the reversal.
+  const final = b.s.store.getDispute(d.id)!;
+  assert.equal(final.packet!.payout!.item_status, 'RETURNED');
+  assert.equal(final.status, 'evidence_assembled');
+  assert.equal(b.s.store.getPurchase(p.id)!.status, 'disputed');
+  assert.equal(b.s.store.spentMoney(b.mandate.id), '299.00');
+});

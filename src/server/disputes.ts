@@ -158,21 +158,20 @@ export class DisputeService {
   }
 
   /** Ask PayPal how the payout ended. A payout that did not reach the buyer reopens the dispute so it can be retried. */
-  /** Dispute ids with a payout check in flight: checks for one dispute never overlap (no double credit). */
-  private checking = new Set<string>();
+  /**
+   * Payout checks for one dispute run one after another (a queue per dispute): never overlapping, so a payout is
+   * credited at most once, and never dropped, so a check that arrives during another (a webhook, say) still runs
+   * afterwards and reads PayPal's state fresh.
+   */
+  private queues = new Map<string, Promise<unknown>>();
 
-  async checkPayout(id: string): Promise<Dispute> {
-    if (this.checking.has(id)) {
-      const cur = this.store.getDispute(id);
-      if (!cur) throw notFound(`Dispute ${id} not found`);
-      return cur;
-    }
-    this.checking.add(id);
-    try {
-      return await this.checkPayoutOnce(id);
-    } finally {
-      this.checking.delete(id);
-    }
+  checkPayout(id: string): Promise<Dispute> {
+    const prev = this.queues.get(id) ?? Promise.resolve();
+    const run = prev.catch(() => {}).then(() => this.checkPayoutOnce(id));
+    const tail = run.catch(() => {});
+    this.queues.set(id, tail);
+    void tail.then(() => { if (this.queues.get(id) === tail) this.queues.delete(id); });
+    return run;
   }
 
   private async checkPayoutOnce(id: string): Promise<Dispute> {
