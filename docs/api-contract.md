@@ -1,7 +1,6 @@
 # Sentry — API Contract
 
-Owner: backend (`src/server/**`). Other agents request changes in `handoffs/ui-requests.md` or
-`handoffs/qa-findings.md`; nobody else edits this file. Derived from `implementation-plan.pdf`.
+Owner: backend (`src/server/**`). Request changes through an issue or pull request.
 
 ## Breaking changes
 _Newest first. Every breaking change gets a dated line here._
@@ -550,7 +549,7 @@ submit). A judge must be able to follow one purchase from instruction to evidenc
 disputes and `demo_rogue` purchases visibly. Next.js with `output: 'export'`; reads
 `NEXT_PUBLIC_API_URL` (default `""` = same origin).
 
-## 12. Day-1 spikes (answers change this contract — flag in `handoffs/`)
+## 12. Day-1 spikes (answers change this contract)
 1. **Disputes API access.** Are list/show/provide-evidence/accept-claim and the sandbox-only
    require-evidence/adjudicate usable with our sandbox app? (Plan risk #1.) If not: `simulated`
    disputes become the demo path.
